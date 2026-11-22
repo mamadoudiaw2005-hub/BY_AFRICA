@@ -48,16 +48,20 @@ export default function ByAfrikaPage() {
   const [showProductFormModal, setShowProductFormModal] = useState(false);
   const [selectedAdminMessage, setSelectedAdminMessage] = useState(null);
   const [showAddUserModal, setShowAddUserModal] = useState(false);
+  const [newCategoryName, setNewCategoryName] = useState('');
 
   // ── CHARGEMENT LOCALSTORAGE & SUPABASE ──
   useEffect(() => {
-    // Restaurer session utilisateur & panier
+    // Restaurer session utilisateur & panier & configuration
     try {
       const savedUser = localStorage.getItem('byafrika_user');
       if (savedUser) setUser(JSON.parse(savedUser));
 
       const savedCart = localStorage.getItem('byafrika_cart');
       if (savedCart) setCart(JSON.parse(savedCart));
+
+      const savedConfig = localStorage.getItem('byafrika_config');
+      if (savedConfig) setConfig(JSON.parse(savedConfig));
 
       const savedConsent = localStorage.getItem('byafrika_cookie_consent');
       if (savedConsent) setCookieConsent(true);
@@ -76,6 +80,9 @@ export default function ByAfrikaPage() {
 
         const { data: dbMsgs } = await supabase.from('messages').select('*').order('created_at', { ascending: false });
         if (dbMsgs && dbMsgs.length > 0) setMessages(dbMsgs);
+
+        const { data: dbConfig } = await supabase.from('config').select('*').limit(1).maybeSingle();
+        if (dbConfig) setConfig(prev => ({ ...prev, ...dbConfig }));
       } catch (err) {
         console.warn('Mode autonome local activé.', err);
       }
@@ -360,6 +367,44 @@ export default function ByAfrikaPage() {
       } catch (e) {}
       showToast('Produit retiré du catalogue.');
     }
+  };
+
+  // ── GESTION DE LA CONFIGURATION ET CATÉGORIES ADMIN ──
+  const handleAddCategory = (e) => {
+    if (e && e.preventDefault) e.preventDefault();
+    const cat = newCategoryName.trim();
+    if (!cat) return;
+    if (config.categories?.includes(cat)) {
+      showToast('Cette catégorie existe déjà.');
+      return;
+    }
+    const updated = { ...config, categories: [...(config.categories || []), cat] };
+    setConfig(updated);
+    try {
+      localStorage.setItem('byafrika_config', JSON.stringify(updated));
+    } catch (err) {}
+    setNewCategoryName('');
+    showToast(`Catégorie "${cat}" ajoutée.`);
+  };
+
+  const handleRemoveCategory = (cat) => {
+    const updated = { ...config, categories: config.categories?.filter(c => c !== cat) };
+    setConfig(updated);
+    try {
+      localStorage.setItem('byafrika_config', JSON.stringify(updated));
+    } catch (err) {}
+    showToast(`Catégorie "${cat}" supprimée.`);
+  };
+
+  const handleSaveConfig = async (e) => {
+    if (e && e.preventDefault) e.preventDefault();
+    try {
+      localStorage.setItem('byafrika_config', JSON.stringify(config));
+    } catch (err) {}
+    try {
+      await supabase.from('config').upsert({ id: 'main', ...config });
+    } catch (err) {}
+    showToast('Configuration et réseaux sociaux enregistrés avec succès !');
   };
 
   // ── FILTRAGE DES PRODUITS CLIENT ──
@@ -891,8 +936,32 @@ export default function ByAfrikaPage() {
                     </div>
                     <div className="contact-item">
                       <i className="fa-brands fa-whatsapp" />
-                      <span>{config.phone || '+221 77 000 00 00'}</span>
+                      <span>{config.whatsapp || config.phone || '+221 77 000 00 00'}</span>
                     </div>
+                  </div>
+
+                  {/* Réseaux sociaux officiels */}
+                  <div className="social-icons" style={{ marginTop: 16, marginBottom: 24 }}>
+                    {config.whatsapp && (
+                      <a href={config.whatsapp.startsWith('http') ? config.whatsapp : `https://wa.me/${config.whatsapp.replace(/[^0-9]/g, '')}`} target="_blank" rel="noreferrer" className="social-btn" aria-label="WhatsApp">
+                        <i className="fa-brands fa-whatsapp" />
+                      </a>
+                    )}
+                    {config.facebook && (
+                      <a href={config.facebook} target="_blank" rel="noreferrer" className="social-btn" aria-label="Facebook">
+                        <i className="fa-brands fa-facebook-f" />
+                      </a>
+                    )}
+                    {config.instagram && (
+                      <a href={config.instagram} target="_blank" rel="noreferrer" className="social-btn" aria-label="Instagram">
+                        <i className="fa-brands fa-instagram" />
+                      </a>
+                    )}
+                    {config.tiktok && (
+                      <a href={config.tiktok} target="_blank" rel="noreferrer" className="social-btn" aria-label="TikTok">
+                        <i className="fa-brands fa-tiktok" />
+                      </a>
+                    )}
                   </div>
 
                   {/* Formulaire Réclamation & Message Client Direct */}
@@ -1069,15 +1138,26 @@ export default function ByAfrikaPage() {
                     Maison de prêt-à-porter célébrant l'élégance, la culture et l'authenticité africaine. Des créations d'exception pensées et confectionnées à Dakar.
                   </p>
                   <div className="social-icons">
-                    <a href="https://wa.me/221770000000" target="_blank" rel="noreferrer" className="social-btn" aria-label="WhatsApp">
-                      <i className="fa-brands fa-whatsapp" />
-                    </a>
-                    <a href="https://instagram.com" target="_blank" rel="noreferrer" className="social-btn" aria-label="Instagram">
-                      <i className="fa-brands fa-instagram" />
-                    </a>
-                    <a href="https://tiktok.com" target="_blank" rel="noreferrer" className="social-btn" aria-label="TikTok">
-                      <i className="fa-brands fa-tiktok" />
-                    </a>
+                    {config.whatsapp && (
+                      <a href={config.whatsapp.startsWith('http') ? config.whatsapp : `https://wa.me/${config.whatsapp.replace(/[^0-9]/g, '')}`} target="_blank" rel="noreferrer" className="social-btn" aria-label="WhatsApp">
+                        <i className="fa-brands fa-whatsapp" />
+                      </a>
+                    )}
+                    {config.facebook && (
+                      <a href={config.facebook} target="_blank" rel="noreferrer" className="social-btn" aria-label="Facebook">
+                        <i className="fa-brands fa-facebook-f" />
+                      </a>
+                    )}
+                    {config.instagram && (
+                      <a href={config.instagram} target="_blank" rel="noreferrer" className="social-btn" aria-label="Instagram">
+                        <i className="fa-brands fa-instagram" />
+                      </a>
+                    )}
+                    {config.tiktok && (
+                      <a href={config.tiktok} target="_blank" rel="noreferrer" className="social-btn" aria-label="TikTok">
+                        <i className="fa-brands fa-tiktok" />
+                      </a>
+                    )}
                   </div>
                 </div>
                 <div className="footer-col">
@@ -1421,29 +1501,186 @@ export default function ByAfrikaPage() {
               {/* TAB : CONFIGURATION */}
               {adminTab === 'config' && (
                 <div className="admin-section active">
-                  <h2>Configuration Générale</h2>
-                  <form className="form-stack" onSubmit={(e) => { e.preventDefault(); showToast('Configuration mise à jour !'); }}>
-                    <div className="form-grid">
-                      <div className="form-group">
-                        <label className="form-label">Nom de la boutique</label>
-                        <input type="text" className="form-input" value={config.siteName} onChange={e => setConfig({ ...config, siteName: e.target.value })} />
-                      </div>
-                      <div className="form-group">
-                        <label className="form-label">Slogan</label>
-                        <input type="text" className="form-input" value={config.slogan} onChange={e => setConfig({ ...config, slogan: e.target.value })} />
-                      </div>
-                      <div className="form-group">
-                        <label className="form-label">Téléphone</label>
-                        <input type="text" className="form-input" value={config.phone} onChange={e => setConfig({ ...config, phone: e.target.value })} />
-                      </div>
-                      <div className="form-group">
-                        <label className="form-label">Frais de livraison (FCFA)</label>
-                        <input type="number" className="form-input" value={config.deliveryFee} onChange={e => setConfig({ ...config, deliveryFee: Number(e.target.value) })} />
+                  <h2>Configuration Générale & Réseaux Sociaux</h2>
+
+                  <form className="form-stack" onSubmit={handleSaveConfig}>
+                    {/* Section 1 : Informations Générales */}
+                    <div className="config-section">
+                      <h3><i className="fa-solid fa-store" /> Informations générales</h3>
+                      <div className="form-grid">
+                        <div className="form-group">
+                          <label className="form-label">Nom du site / boutique</label>
+                          <input
+                            type="text"
+                            className="form-input"
+                            value={config.siteName || ''}
+                            onChange={e => setConfig({ ...config, siteName: e.target.value })}
+                            placeholder="BY_AFRIKA"
+                          />
+                        </div>
+                        <div className="form-group">
+                          <label className="form-label">Slogan</label>
+                          <input
+                            type="text"
+                            className="form-input"
+                            value={config.slogan || ''}
+                            onChange={e => setConfig({ ...config, slogan: e.target.value })}
+                            placeholder="Portez vos origines avec confiance"
+                          />
+                        </div>
+                        <div className="form-group full-width">
+                          <label className="form-label">Description du site</label>
+                          <textarea
+                            className="form-input"
+                            rows={3}
+                            value={config.description || ''}
+                            onChange={e => setConfig({ ...config, description: e.target.value })}
+                            placeholder="Description de la boutique..."
+                          />
+                        </div>
                       </div>
                     </div>
-                    <button type="submit" className="btn btn-primary" style={{ alignSelf: 'flex-start', marginTop: 16 }}>
-                      <i className="fa-solid fa-save" /> Enregistrer les réglages
-                    </button>
+
+                    {/* Section 2 : Contact & Showroom */}
+                    <div className="config-section">
+                      <h3><i className="fa-solid fa-address-book" /> Contact & Showroom</h3>
+                      <div className="form-grid">
+                        <div className="form-group">
+                          <label className="form-label">Numéro de Téléphone</label>
+                          <input
+                            type="tel"
+                            className="form-input"
+                            value={config.phone || ''}
+                            onChange={e => setConfig({ ...config, phone: e.target.value })}
+                            placeholder="+221 77 000 00 00"
+                          />
+                        </div>
+                        <div className="form-group">
+                          <label className="form-label">Email de Contact</label>
+                          <input
+                            type="email"
+                            className="form-input"
+                            value={config.email || ''}
+                            onChange={e => setConfig({ ...config, email: e.target.value })}
+                            placeholder="contact@byafrica.com"
+                          />
+                        </div>
+                        <div className="form-group full-width">
+                          <label className="form-label">Adresse / Showroom</label>
+                          <input
+                            type="text"
+                            className="form-input"
+                            value={config.address || ''}
+                            onChange={e => setConfig({ ...config, address: e.target.value })}
+                            placeholder="Dakar, Sénégal"
+                          />
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Section 3 : Réseaux Sociaux & Liens Directs (Contrôle Admin Restoré) */}
+                    <div className="config-section">
+                      <h3><i className="fa-solid fa-share-nodes" /> Réseaux Sociaux & Liens Directs</h3>
+                      <p style={{ color: 'var(--text-secondary)', fontSize: '0.9rem', marginBottom: 20 }}>
+                        Configurez les liens et numéros de vos pages sociales. Ils s'actualisent en direct sur le pied de page et la page de contact.
+                      </p>
+                      <div className="form-grid">
+                        <div className="form-group">
+                          <label className="form-label"><i className="fa-brands fa-whatsapp" style={{ color: '#25D366' }} /> WhatsApp (Numéro international ou lien)</label>
+                          <input
+                            type="text"
+                            className="form-input"
+                            value={config.whatsapp || ''}
+                            onChange={e => setConfig({ ...config, whatsapp: e.target.value })}
+                            placeholder="+221770000000"
+                          />
+                        </div>
+                        <div className="form-group">
+                          <label className="form-label"><i className="fa-brands fa-instagram" style={{ color: '#E4405F' }} /> Instagram (URL complète)</label>
+                          <input
+                            type="url"
+                            className="form-input"
+                            value={config.instagram || ''}
+                            onChange={e => setConfig({ ...config, instagram: e.target.value })}
+                            placeholder="https://instagram.com/byafrika"
+                          />
+                        </div>
+                        <div className="form-group">
+                          <label className="form-label"><i className="fa-brands fa-facebook" style={{ color: '#1877F2' }} /> Facebook (URL complète)</label>
+                          <input
+                            type="url"
+                            className="form-input"
+                            value={config.facebook || ''}
+                            onChange={e => setConfig({ ...config, facebook: e.target.value })}
+                            placeholder="https://facebook.com/byafrika"
+                          />
+                        </div>
+                        <div className="form-group">
+                          <label className="form-label"><i className="fa-brands fa-tiktok" /> TikTok (URL complète)</label>
+                          <input
+                            type="url"
+                            className="form-input"
+                            value={config.tiktok || ''}
+                            onChange={e => setConfig({ ...config, tiktok: e.target.value })}
+                            placeholder="https://tiktok.com/@byafrika"
+                          />
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Section 4 : Catégories d'articles */}
+                    <div className="config-section">
+                      <h3><i className="fa-solid fa-tags" /> Catégories d'articles</h3>
+                      <div id="config-categories-list" className="categories-list" style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 16 }}>
+                        {(config.categories || []).map((cat, idx) => (
+                          <span key={idx} className="category-tag" style={{ display: 'inline-flex', alignItems: 'center', gap: 8, padding: '6px 14px', background: 'var(--bg-card)', border: '1px solid var(--border-color)', borderRadius: 20, fontSize: '0.85rem' }}>
+                            {cat}
+                            <button
+                              type="button"
+                              onClick={() => handleRemoveCategory(cat)}
+                              style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', padding: 0, marginLeft: 4 }}
+                              title={`Supprimer ${cat}`}
+                            >
+                              <i className="fa-solid fa-xmark" />
+                            </button>
+                          </span>
+                        ))}
+                      </div>
+                      <div className="config-add-category" style={{ display: 'flex', gap: 10, maxWidth: 450 }}>
+                        <input
+                          type="text"
+                          className="form-input"
+                          placeholder="Nouvelle catégorie (ex: Chemises)"
+                          value={newCategoryName}
+                          onChange={e => setNewCategoryName(e.target.value)}
+                          onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); handleAddCategory(e); } }}
+                        />
+                        <button type="button" className="btn btn-primary" onClick={handleAddCategory}>
+                          <i className="fa-solid fa-plus" /> Ajouter
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Section 5 : Frais de Livraison */}
+                    <div className="config-section">
+                      <h3><i className="fa-solid fa-truck-fast" /> Frais de Livraison</h3>
+                      <div className="form-group" style={{ maxWidth: 350 }}>
+                        <label className="form-label">Frais forfaitaire de livraison (FCFA)</label>
+                        <input
+                          type="number"
+                          className="form-input"
+                          value={config.deliveryFee || 0}
+                          onChange={e => setConfig({ ...config, deliveryFee: Number(e.target.value) })}
+                          placeholder="2000"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="form-actions" style={{ marginTop: 24 }}>
+                      <button type="submit" className="btn btn-primary" style={{ padding: '12px 28px', fontSize: '1rem' }}>
+                        <i className="fa-solid fa-save" /> Enregistrer toute la configuration
+                      </button>
+                    </div>
                   </form>
                 </div>
               )}
