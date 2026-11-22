@@ -1885,22 +1885,27 @@ textarea.form-input {
 #modal-product,
 #modal-confirmation,
 #modal-order-detail,
-#modal-google-auth {
+#modal-google-auth,
+#modal-admin-login,
+#modal-forgot-password,
+#modal-admin-product,
+#modal-admin-user,
+.modal-admin-dialog {
   position: fixed;
   top: 50%;
   left: 50%;
   transform: translate(-50%, -50%);
-  z-index: 2100;
+  z-index: 2200;
   background-color: #ffffff;
   border: 1px solid var(--border-color);
   border-radius: var(--radius-lg);
-  padding: 40px 32px;
-  width: 90%;
-  max-width: 480px;
+  padding: 36px 30px;
+  width: 92%;
+  max-width: 680px;
   max-height: 90vh;
   overflow-y: auto;
-  display: none;
-  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.22);
+  display: block;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
   animation: scaleIn 0.3s ease;
 }
 
@@ -1915,7 +1920,15 @@ textarea.form-input {
 #modal-order-detail.active,
 #modal-order-detail:not(.hidden),
 #modal-google-auth.active,
-#modal-google-auth:not(.hidden) {
+#modal-google-auth:not(.hidden),
+#modal-admin-login.active,
+#modal-admin-login:not(.hidden),
+#modal-forgot-password.active,
+#modal-forgot-password:not(.hidden),
+#modal-admin-product.active,
+#modal-admin-product:not(.hidden),
+#modal-admin-user.active,
+#modal-admin-user:not(.hidden) {
   display: block !important;
 }
 

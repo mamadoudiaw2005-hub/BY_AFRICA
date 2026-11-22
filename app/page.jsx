@@ -718,6 +718,28 @@ export default function ByAfrikaPage() {
     }
   };
 
+  // ── AJOUT DE RÔLE UTILISATEUR (ADMIN) ──
+  const handleAddUserSubmit = async (e) => {
+    e.preventDefault();
+    const name = e.target.userName?.value?.trim();
+    const email = e.target.userEmail?.value?.trim();
+    const role = e.target.userRole?.value || 'Gestionnaire de commandes';
+
+    if (!name || !email) {
+      showToast('Veuillez remplir tous les champs obligatoires.', true);
+      return;
+    }
+
+    const newUser = { id: `usr_${Date.now()}`, name, email, role };
+    setUsersList(prev => [...prev, newUser]);
+    try {
+      await supabase.from('users').upsert({ id: newUser.id, name, email, role, auth_provider: 'local' });
+    } catch (err) {}
+
+    setShowAddUserModal(false);
+    showToast(`Membre d'équipe ${name} ajouté (${role}) !`);
+  };
+
   // ── GESTION DE LA CONFIGURATION ET CATÉGORIES ADMIN ──
   const handleAddCategory = (e) => {
     if (e && e.preventDefault) e.preventDefault();
@@ -2901,26 +2923,34 @@ export default function ByAfrikaPage() {
 
       {/* 7. Modal Admin Ajout/Modification Produit */}
       {showProductFormModal && (
-        <div className="modal" style={{ display: 'block' }}>
-          <div className="modal-content modal-large">
-            <button type="button" className="modal-close" onClick={() => setShowProductFormModal(false)}>
+        <div id="modal-admin-product" className="modal modal-admin-dialog" style={{ display: 'block' }}>
+          <div className="modal-content">
+            <button type="button" className="auth-modal-close-btn modal-close" onClick={() => setShowProductFormModal(false)}>
               <i className="fa-solid fa-xmark" />
             </button>
-            <h2>{editingProduct ? 'Modifier le Produit' : 'Ajouter un Produit'}</h2>
+            <div style={{ marginBottom: 20 }}>
+              <h2 style={{ fontSize: '1.35rem', fontWeight: 800, margin: '0 0 4px 0', display: 'flex', alignItems: 'center', gap: 8 }}>
+                <i className="fa-solid fa-shirt" style={{ color: '#c49a26' }} />
+                {editingProduct ? 'Modifier le Vêtement' : 'Ajouter un Vêtement'}
+              </h2>
+              <p style={{ fontSize: '0.85rem', color: '#666', margin: 0 }}>
+                {editingProduct ? 'Modifiez les informations de cet article du catalogue.' : 'Remplissez les détails du vêtement pour l\'ajouter immédiatement au catalogue.'}
+              </p>
+            </div>
             <form className="form-stack" onSubmit={handleSaveProduct}>
               <div className="form-grid">
                 <div className="form-group">
-                  <label className="form-label">Nom de l'article</label>
-                  <input type="text" name="name" className="form-input" defaultValue={editingProduct?.name || ''} required />
+                  <label className="form-label">Nom de l'article *</label>
+                  <input type="text" name="name" className="form-input" placeholder="Ex: T-shirt Signature BY_AFRIKA" defaultValue={editingProduct?.name || ''} required autoFocus />
                 </div>
                 <div className="form-group">
-                  <label className="form-label">Catégorie</label>
+                  <label className="form-label">Catégorie *</label>
                   <select name="category" className="form-input" defaultValue={editingProduct?.category || 'T-shirts'}>
-                    {config.categories?.map(c => <option key={c} value={c}>{c}</option>)}
+                    {(config.categories || ['T-shirts', 'Polos', 'Chemises', 'Pantalons', 'Robes', 'Accessoires']).map(c => <option key={c} value={c}>{c}</option>)}
                   </select>
                 </div>
                 <div className="form-group">
-                  <label className="form-label">Genre</label>
+                  <label className="form-label">Genre *</label>
                   <select name="genre" className="form-input" defaultValue={editingProduct?.genre || 'Unisexe'}>
                     <option value="Homme">Homme</option>
                     <option value="Femme">Femme</option>
@@ -2928,33 +2958,87 @@ export default function ByAfrikaPage() {
                   </select>
                 </div>
                 <div className="form-group">
-                  <label className="form-label">Prix (FCFA)</label>
-                  <input type="number" name="price" className="form-input" defaultValue={editingProduct?.price || 15000} required />
+                  <label className="form-label">Prix (FCFA) *</label>
+                  <input type="number" name="price" className="form-input" placeholder="15000" defaultValue={editingProduct?.price || 15000} required />
                 </div>
                 <div className="form-group">
-                  <label className="form-label">Stock disponible</label>
-                  <input type="number" name="stock" className="form-input" defaultValue={editingProduct?.stock || 50} required />
+                  <label className="form-label">Stock disponible (unités) *</label>
+                  <input type="number" name="stock" className="form-input" placeholder="25" defaultValue={editingProduct?.stock || 25} required />
                 </div>
                 <div className="form-group">
-                  <label className="form-label">Image (ex: /tshirt-byafrika.jpg)</label>
-                  <input type="text" name="image" className="form-input" defaultValue={editingProduct?.image || '/tshirt-byafrika.jpg'} />
+                  <label className="form-label">Image (ex: /tshirt-byafrika.jpg ou URL)</label>
+                  <input type="text" name="image" className="form-input" placeholder="/tshirt-byafrika.jpg" defaultValue={editingProduct?.image || '/tshirt-byafrika.jpg'} />
                 </div>
                 <div className="form-group">
-                  <label className="form-label">Tailles (séparées par virgule)</label>
-                  <input type="text" name="sizes" className="form-input" defaultValue={editingProduct?.sizes?.join(', ') || 'S, M, L, XL, XXL'} />
+                  <label className="form-label">Tailles (séparées par une virgule)</label>
+                  <input type="text" name="sizes" className="form-input" placeholder="S, M, L, XL, XXL" defaultValue={editingProduct?.sizes?.join(', ') || 'S, M, L, XL, XXL'} />
                 </div>
                 <div className="form-group">
-                  <label className="form-label">Couleurs (séparées par virgule)</label>
-                  <input type="text" name="colors" className="form-input" defaultValue={editingProduct?.colors?.join(', ') || 'Noir, Blanc'} />
+                  <label className="form-label">Couleurs (séparées par une virgule)</label>
+                  <input type="text" name="colors" className="form-input" placeholder="Noir, Blanc" defaultValue={editingProduct?.colors?.join(', ') || 'Noir, Blanc'} />
                 </div>
               </div>
-              <div className="form-group full-width">
-                <label className="form-label">Description</label>
-                <textarea name="description" className="form-input" rows={3} defaultValue={editingProduct?.description || ''} />
+              <div className="form-group full-width" style={{ marginTop: 8 }}>
+                <label className="form-label">Description du vêtement</label>
+                <textarea name="description" className="form-input" rows={3} placeholder="Matière en coton peigné premium, coupe moderne..." defaultValue={editingProduct?.description || ''} />
               </div>
-              <button type="submit" className="btn btn-primary btn-full">
-                {editingProduct ? 'Enregistrer les modifications' : 'Ajouter au catalogue'}
-              </button>
+              <div style={{ display: 'flex', gap: 12, marginTop: 18 }}>
+                <button type="button" className="btn btn-outline" style={{ flex: 1 }} onClick={() => setShowProductFormModal(false)}>
+                  Annuler
+                </button>
+                <button type="submit" className="btn btn-primary" style={{ flex: 2 }}>
+                  <i className="fa-solid fa-check" style={{ marginRight: 6 }} />
+                  {editingProduct ? 'Enregistrer les modifications' : 'Ajouter au catalogue'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* 7b. Modal Admin Ajout Rôle / Utilisateur */}
+      {showAddUserModal && (
+        <div id="modal-admin-user" className="modal modal-admin-dialog" style={{ display: 'block', maxWidth: 480 }}>
+          <div className="modal-content">
+            <button type="button" className="auth-modal-close-btn modal-close" onClick={() => setShowAddUserModal(false)}>
+              <i className="fa-solid fa-xmark" />
+            </button>
+            <div style={{ marginBottom: 20 }}>
+              <h2 style={{ fontSize: '1.3rem', fontWeight: 800, margin: '0 0 4px 0', display: 'flex', alignItems: 'center', gap: 8 }}>
+                <i className="fa-solid fa-user-plus" style={{ color: '#c49a26' }} />
+                Attribuer un Rôle
+              </h2>
+              <p style={{ fontSize: '0.85rem', color: '#666', margin: 0 }}>
+                Ajoutez un membre d'équipe et accordez-lui des permissions de gestion.
+              </p>
+            </div>
+            <form className="form-stack" onSubmit={handleAddUserSubmit}>
+              <div className="form-group">
+                <label className="form-label">Nom complet *</label>
+                <input type="text" name="userName" className="form-input" placeholder="Ex: Moussa Ndiaye" required autoFocus />
+              </div>
+              <div className="form-group">
+                <label className="form-label">Adresse e-mail *</label>
+                <input type="email" name="userEmail" className="form-input" placeholder="moussa@byafrika.com" required />
+              </div>
+              <div className="form-group">
+                <label className="form-label">Rôle attribué *</label>
+                <select name="userRole" className="form-input" defaultValue="Gestionnaire de commandes">
+                  <option value="Administrateur">Administrateur</option>
+                  <option value="Gestionnaire de stock">Gestionnaire de stock</option>
+                  <option value="Gestionnaire de commandes">Gestionnaire de commandes</option>
+                  <option value="Service Client SAV">Service Client SAV</option>
+                </select>
+              </div>
+              <div style={{ display: 'flex', gap: 12, marginTop: 18 }}>
+                <button type="button" className="btn btn-outline" style={{ flex: 1 }} onClick={() => setShowAddUserModal(false)}>
+                  Annuler
+                </button>
+                <button type="submit" className="btn btn-primary" style={{ flex: 2 }}>
+                  <i className="fa-solid fa-plus" style={{ marginRight: 6 }} />
+                  Confirmer le rôle
+                </button>
+              </div>
             </form>
           </div>
         </div>
