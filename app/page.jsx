@@ -1,8 +1,8 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { supabase } from '@/lib/supabase';
-import { DEFAULT_CONFIG, DEFAULT_PRODUCTS, DEMO_ADMINS } from '@/lib/initialData';
+import { supabase } from '../lib/supabase';
+import { DEFAULT_CONFIG, DEFAULT_PRODUCTS, DEMO_ADMINS } from '../lib/initialData';
 
 export default function ByAfrikaPage() {
   // ── ÉTATS PRINCIPAUX ──
