@@ -98,6 +98,11 @@ export default function ByAfrikaPage() {
     return (Number(p) || 0).toLocaleString('fr-FR') + ' FCFA';
   };
 
+  const getSafeImage = (img) => {
+    if (!img || typeof img !== 'string') return '/tshirt-byafrika.jpg';
+    return img.startsWith('/') ? img : `/${img}`;
+  };
+
   // ── ACTIONS PANIER ──
   const addToCart = (product, size = 'M', color = 'Noir', qty = 1) => {
     setCart(prev => {
@@ -306,29 +311,11 @@ export default function ByAfrikaPage() {
   const featuredProducts = products.filter(p => p.featured);
 
   // ── COMPOSANT CARTE PRODUIT AVEC CLASSES EXACTES DE STYLE.CSS ──
-  const renderProductCard = (p) => (
-    <div key={p.id} className="product-card" data-product-id={p.id}>
-      <div
-        className="product-card-img-wrapper"
-        onClick={() => {
-          setProductModal(p);
-          setSelectedSize(p.sizes?.[0] || 'M');
-          setSelectedColor(p.colors?.[0] || 'Noir');
-          setSelectedQty(1);
-        }}
-      >
-        <img
-          className="product-card-img"
-          src={p.image.startsWith('/') ? p.image : `/${p.image}`}
-          alt={p.name}
-          onError={(e) => { e.target.src = '/tshirt-byafrika.jpg'; }}
-        />
-        <span className="product-badge">{p.genre}</span>
-      </div>
-      <div className="product-card-info">
-        <span className="product-card-genre">{p.category || 'Vêtement'}</span>
-        <h3
-          className="product-card-title"
+  const renderProductCard = (p) => {
+    return (
+      <div key={p.id} className="product-card" data-product-id={p.id}>
+        <div
+          className="product-card-img-wrapper"
           onClick={() => {
             setProductModal(p);
             setSelectedSize(p.sizes?.[0] || 'M');
@@ -336,16 +323,18 @@ export default function ByAfrikaPage() {
             setSelectedQty(1);
           }}
         >
-          {p.name}
-        </h3>
-        <div className="product-card-price">
-          <span>{formatPrice(p.price)}</span>
+          <img
+            className="product-card-img"
+            src={getSafeImage(p.image)}
+            alt={p.name}
+            onError={(e) => { e.target.src = '/tshirt-byafrika.jpg'; }}
+          />
+          <span className="product-badge">{p.genre}</span>
         </div>
-        <div className="product-card-actions">
-          <button
-            type="button"
-            className="btn-card-view"
-            title="Voir les détails"
+        <div className="product-card-info">
+          <span className="product-card-genre">{p.category || 'Vêtement'}</span>
+          <h3
+            className="product-card-title"
             onClick={() => {
               setProductModal(p);
               setSelectedSize(p.sizes?.[0] || 'M');
@@ -353,20 +342,38 @@ export default function ByAfrikaPage() {
               setSelectedQty(1);
             }}
           >
-            <i className="fa-solid fa-eye" /> Voir le produit
-          </button>
-          <button
-            type="button"
-            className="btn-card-add-cart"
-            title="Ajouter au panier"
-            onClick={() => addToCart(p, p.sizes?.[0] || 'M', p.colors?.[0] || 'Noir', 1)}
-          >
-            <i className="fa-solid fa-cart-plus" /> Ajouter au panier
-          </button>
+            {p.name}
+          </h3>
+          <div className="product-card-price">
+            <span>{formatPrice(p.price)}</span>
+          </div>
+          <div className="product-card-actions">
+            <button
+              type="button"
+              className="btn-card-view"
+              title="Voir les détails"
+              onClick={() => {
+                setProductModal(p);
+                setSelectedSize(p.sizes?.[0] || 'M');
+                setSelectedColor(p.colors?.[0] || 'Noir');
+                setSelectedQty(1);
+              }}
+            >
+              <i className="fa-solid fa-eye" /> Voir le produit
+            </button>
+            <button
+              type="button"
+              className="btn-card-add-cart"
+              title="Ajouter au panier"
+              onClick={() => addToCart(p, p.sizes?.[0] || 'M', p.colors?.[0] || 'Noir', 1)}
+            >
+              <i className="fa-solid fa-cart-plus" /> Ajouter au panier
+            </button>
+          </div>
         </div>
       </div>
-    </div>
-  );
+    );
+  };
 
   return (
     <>
@@ -906,41 +913,57 @@ export default function ByAfrikaPage() {
             </section>
           )}
 
-          {/* Pied de Page Officiel */}
+          {/* Pied de Page Officiel BY_AFRIKA */}
           <footer className="site-footer">
             <div className="container">
               <div className="footer-grid">
                 <div className="footer-col">
-                  <div className="brand-logo" style={{ marginBottom: 12 }}>
-                    <img src="/logo.jpg" alt="Logo" className="brand-logo-img" />
-                    <span className="brand-logo-text">BY_AFRIKA</span>
+                  <div className="footer-brand-header">
+                    <img src="/logo.jpg" alt="Logo BY_AFRIKA" className="footer-logo" />
+                    <span className="footer-brand-title">BY_AFRIKA</span>
                   </div>
-                  <p style={{ fontSize: '0.88rem', color: 'var(--text-secondary)', lineHeight: 1.5 }}>
-                    Maison de prêt-à-porter célébrant l'élégance, la culture et l'authenticité africaine.
+                  <p className="footer-desc">
+                    Maison de prêt-à-porter célébrant l'élégance, la culture et l'authenticité africaine. Des créations d'exception pensées et confectionnées à Dakar.
                   </p>
+                  <div className="social-icons">
+                    <a href="https://wa.me/221770000000" target="_blank" rel="noreferrer" className="social-btn" aria-label="WhatsApp">
+                      <i className="fa-brands fa-whatsapp" />
+                    </a>
+                    <a href="https://instagram.com" target="_blank" rel="noreferrer" className="social-btn" aria-label="Instagram">
+                      <i className="fa-brands fa-instagram" />
+                    </a>
+                    <a href="https://tiktok.com" target="_blank" rel="noreferrer" className="social-btn" aria-label="TikTok">
+                      <i className="fa-brands fa-tiktok" />
+                    </a>
+                  </div>
                 </div>
                 <div className="footer-col">
-                  <h4>Navigation</h4>
-                  <ul className="footer-links">
-                    <li><a href="#" onClick={(e) => { e.preventDefault(); setActivePage('accueil'); }}>Accueil</a></li>
-                    <li><a href="#" onClick={(e) => { e.preventDefault(); setActivePage('boutique'); }}>Toute la Boutique</a></li>
-                    <li><a href="#" onClick={(e) => { e.preventDefault(); setActivePage('hommes'); }}>Collection Homme</a></li>
-                    <li><a href="#" onClick={(e) => { e.preventDefault(); setActivePage('femmes'); }}>Collection Femme</a></li>
+                  <h4 className="footer-heading">Navigation</h4>
+                  <ul className="footer-list">
+                    <li><a href="#" onClick={(e) => { e.preventDefault(); setActivePage('accueil'); window.scrollTo({ top: 0, behavior: 'smooth' }); }}>Accueil</a></li>
+                    <li><a href="#" onClick={(e) => { e.preventDefault(); setActivePage('boutique'); window.scrollTo({ top: 0, behavior: 'smooth' }); }}>Toute la Boutique</a></li>
+                    <li><a href="#" onClick={(e) => { e.preventDefault(); setActivePage('hommes'); window.scrollTo({ top: 0, behavior: 'smooth' }); }}>Collection Homme</a></li>
+                    <li><a href="#" onClick={(e) => { e.preventDefault(); setActivePage('femmes'); window.scrollTo({ top: 0, behavior: 'smooth' }); }}>Collection Femme</a></li>
+                    <li><a href="#" onClick={(e) => { e.preventDefault(); setActivePage('apropos'); window.scrollTo({ top: 0, behavior: 'smooth' }); }}>À Propos</a></li>
                   </ul>
                 </div>
                 <div className="footer-col">
-                  <h4>Contact</h4>
-                  <ul className="footer-links">
-                    <li><i className="fa-solid fa-location-dot" /> {config.address || 'Dakar, Sénégal'}</li>
-                    <li><i className="fa-solid fa-phone" /> {config.phone || '+221 77 000 00 00'}</li>
-                    <li><i className="fa-solid fa-envelope" /> {config.email || 'contact@byafrica.com'}</li>
-                    <li><a href="#" onClick={(e) => { e.preventDefault(); setActivePage('contact'); }}>Réclamations & SAV</a></li>
+                  <h4 className="footer-heading">Contact & Showroom</h4>
+                  <ul className="footer-contact-list">
+                    <li><i className="fa-solid fa-location-dot" style={{ color: '#dfba5c' }} /> {config.address || 'Dakar, Sénégal'}</li>
+                    <li><i className="fa-solid fa-phone" style={{ color: '#dfba5c' }} /> {config.phone || '+221 77 000 00 00'}</li>
+                    <li><i className="fa-solid fa-envelope" style={{ color: '#dfba5c' }} /> {config.email || 'contact@byafrica.com'}</li>
+                    <li>
+                      <a href="#" onClick={(e) => { e.preventDefault(); setActivePage('contact'); window.scrollTo({ top: 0, behavior: 'smooth' }); }} style={{ color: '#dfba5c', fontWeight: 600 }}>
+                        <i className="fa-solid fa-headset" style={{ color: '#dfba5c' }} /> Réclamations & SAV
+                      </a>
+                    </li>
                   </ul>
                 </div>
               </div>
 
               <div className="footer-bottom">
-                <p>© 2026 BY_AFRIKA. Tous droits réservés. Prêt-à-porter masculin & féminin au Sénégal.</p>
+                <p>© 2026 BY_AFRIKA. Tous droits réservés. Maison de prêt-à-porter au Sénégal.</p>
               </div>
             </div>
           </footer>
@@ -1070,7 +1093,7 @@ export default function ByAfrikaPage() {
                         {products.map(p => (
                           <tr key={p.id}>
                             <td>
-                              <img src={p.image.startsWith('/') ? p.image : `/${p.image}`} alt={p.name} style={{ width: 44, height: 44, borderRadius: 6, objectFit: 'cover' }} />
+                              <img src={getSafeImage(p.image)} alt={p.name} style={{ width: 44, height: 44, borderRadius: 6, objectFit: 'cover' }} />
                             </td>
                             <td><strong>{p.name}</strong></td>
                             <td><span className="badge-type">{p.genre}</span></td>
@@ -1302,7 +1325,7 @@ export default function ByAfrikaPage() {
             <div className="product-modal-layout">
               <div className="product-modal-img">
                 <img
-                  src={productModal.image.startsWith('/') ? productModal.image : `/${productModal.image}`}
+                  src={getSafeImage(productModal.image)}
                   alt={productModal.name}
                   onError={(e) => { e.target.src = '/tshirt-byafrika.jpg'; }}
                 />
@@ -1385,7 +1408,7 @@ export default function ByAfrikaPage() {
           ) : (
             cart.map((item, idx) => (
               <div key={`${item.id}_${item.size}_${item.color}`} className="cart-item" style={{ display: 'flex', gap: 12, alignItems: 'center', padding: '12px 0', borderBottom: '1px solid var(--border-color)' }}>
-                <img src={item.image.startsWith('/') ? item.image : `/${item.image}`} alt={item.name} style={{ width: 55, height: 55, borderRadius: 6, objectFit: 'cover' }} />
+                <img src={getSafeImage(item.image)} alt={item.name} style={{ width: 55, height: 55, borderRadius: 6, objectFit: 'cover' }} />
                 <div style={{ flex: 1 }}>
                   <h4 style={{ margin: 0, fontSize: '0.92rem' }}>{item.name}</h4>
                   <div style={{ fontSize: '0.8rem', color: '#777', margin: '3px 0' }}>{item.size} • {item.color}</div>

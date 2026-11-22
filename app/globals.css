@@ -2501,12 +2501,12 @@ textarea.form-input {
 }
 
 .footer-desc {
-  color: #a3a3a3;
-  font-size: 0.88rem;
+  color: #d1d5db;
+  font-size: 0.9rem;
   line-height: 1.7;
   margin-bottom: 22px;
-  max-width: 360px;
-  font-weight: 300;
+  max-width: 380px;
+  font-weight: 400;
 }
 
 /* Réseaux sociaux circulaires (Style Fatou Shop) */
@@ -2557,14 +2557,14 @@ textarea.form-input {
 }
 
 .footer-list a {
-  color: #a3a3a3;
-  font-size: 0.88rem;
+  color: #e5e7eb;
+  font-size: 0.92rem;
   transition: color var(--transition);
   text-decoration: none;
 }
 
 .footer-list a:hover {
-  color: #ffffff;
+  color: #dfba5c;
 }
 
 .footer-contact-list {
@@ -2618,11 +2618,11 @@ textarea.form-input {
 
 /* Ligne copyright en bas */
 .footer-bottom {
-  border-top: 1px solid #1f1f1f;
+  border-top: 1px solid rgba(255, 255, 255, 0.12);
   padding-top: 26px;
   text-align: center;
-  color: #888888;
-  font-size: 0.82rem;
+  color: #9ca3af;
+  font-size: 0.88rem;
   margin-top: 20px;
 }
 
@@ -4616,11 +4616,12 @@ textarea:focus-visible {
 }
 
 /* Smooth page transitions between sections */
-section {
-  display: none;
+.page {
+  display: block;
+  animation: fadeIn 0.4s ease;
 }
 
-section.active {
+section {
   display: block;
 }
 
