@@ -1,0 +1,15 @@
+services:
+  - type: web
+    name: by-afrika
+    env: node
+    plan: free
+    region: frankfurt
+    buildCommand: npm install && npm run build
+    startCommand: npm start
+    envVars:
+      - key: NODE_VERSION
+        value: 20
+      - key: NEXT_PUBLIC_SUPABASE_URL
+        value: https://vgaifljtaocvnifiyrsg.supabase.co
+      - key: NEXT_PUBLIC_SUPABASE_ANON_KEY
+        value: sb_publishable_7oHChmVbT7XB7A4FxJNWOA_69FN41xh

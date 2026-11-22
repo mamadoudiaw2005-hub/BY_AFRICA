@@ -263,9 +263,10 @@ export default function ByAfrikaPage() {
           if (error.message?.toLowerCase().includes('email not confirmed')) {
             setAuthNotice({
               type: 'warning',
-              text: 'Votre compte n\'a pas encore été validé. Veuillez ouvrir le lien de confirmation envoyé à votre adresse e-mail pour l\'activer.'
+              email,
+              text: `Votre compte n'a pas encore été validé. Un e-mail de confirmation a été envoyé à ${email}. Veuillez cliquer sur le lien reçu pour l'activer avant de vous connecter.`
             });
-            showToast('Validation requise : consultez votre boîte e-mail.', true);
+            showToast('Validation requise : consultez vos e-mails.', true);
           } else if (error.message?.toLowerCase().includes('invalid login credentials')) {
             setAuthNotice({
               type: 'error',
@@ -388,12 +389,13 @@ export default function ByAfrikaPage() {
             setAuthModalOpen(false);
             showToast(`Félicitations ${nameInput} ! Votre compte a été validé et créé avec succès.`);
           } else {
-            // Validation par e-mail requise par Supabase
+            // Validation par e-mail obligatoire requise par Supabase
             setAuthNotice({
               type: 'success',
-              text: `🎉 Votre compte a été pré-créé avec succès ! Un e-mail de validation a été envoyé à ${email}. Cliquez sur le lien reçu dans votre boîte de réception pour valider et activer votre compte.`
+              email,
+              text: `🎉 Votre compte a été pré-créé avec succès ! Un e-mail de validation a été envoyé à ${email}. Vous devez obligatoirement cliquer sur le lien d'activation reçu dans votre boîte de réception pour valider votre compte avant de pouvoir vous connecter.`
             });
-            showToast(`E-mail de validation envoyé à ${email}.`);
+            showToast(`E-mail de validation envoyé à ${email}. Consultez votre boîte de réception.`);
             setAuthTab('login');
           }
         }
@@ -406,6 +408,36 @@ export default function ByAfrikaPage() {
       } finally {
         setAuthLoading(false);
       }
+    }
+  };
+
+  // ── RENVOI DE L'EMAIL DE VALIDATION DE COMPTE ──
+  const handleResendValidationEmail = async (targetEmail) => {
+    const emailToSend = targetEmail || authNotice?.email || forgotEmail;
+    if (!emailToSend) {
+      showToast('Veuillez renseigner votre adresse e-mail.', true);
+      return;
+    }
+    setAuthLoading(true);
+    try {
+      const { error } = await supabase.auth.resend({
+        type: 'signup',
+        email: emailToSend,
+        options: {
+          emailRedirectTo: typeof window !== 'undefined' ? window.location.origin : undefined
+        }
+      });
+      if (error) throw error;
+      showToast(`E-mail de validation renvoyé avec succès à ${emailToSend} !`);
+      setAuthNotice({
+        type: 'success',
+        email: emailToSend,
+        text: `Un nouvel e-mail de validation a été envoyé à ${emailToSend}. Pensez à vérifier vos courriers indésirables (spams) si vous ne le trouvez pas.`
+      });
+    } catch (err) {
+      showToast(err.message || 'Erreur lors du renvoi de l\'e-mail.', true);
+    } finally {
+      setAuthLoading(false);
     }
   };
 
@@ -2588,20 +2620,41 @@ export default function ByAfrikaPage() {
                 backgroundColor: authNotice.type === 'success' ? '#f0fdf4' : (authNotice.type === 'warning' ? '#fffbeb' : '#fef2f2'),
                 border: `1px solid ${authNotice.type === 'success' ? '#86efac' : (authNotice.type === 'warning' ? '#fde68a' : '#fecaca')}`,
                 color: authNotice.type === 'success' ? '#166534' : (authNotice.type === 'warning' ? '#92400e' : '#991b1b'),
-                padding: '12px 14px',
-                borderRadius: '10px',
+                padding: '14px 16px',
+                borderRadius: '12px',
                 marginBottom: '18px',
                 fontSize: '0.88rem',
-                lineHeight: '1.45',
-                display: 'flex',
-                alignItems: 'flex-start',
-                gap: '10px'
+                lineHeight: '1.45'
               }}>
-                <i className={`fa-solid ${authNotice.type === 'success' ? 'fa-circle-check' : (authNotice.type === 'warning' ? 'fa-envelope-open-text' : 'fa-circle-exclamation')}`} style={{ marginTop: 2, fontSize: '1.1rem' }} />
-                <div style={{ flex: 1 }}>{authNotice.text}</div>
-                <button type="button" onClick={() => setAuthNotice(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'inherit', opacity: 0.6 }}>
-                  <i className="fa-solid fa-xmark" />
-                </button>
+                <div style={{ display: 'flex', alignItems: 'flex-start', gap: '10px' }}>
+                  <i className={`fa-solid ${authNotice.type === 'success' ? 'fa-circle-check' : (authNotice.type === 'warning' ? 'fa-envelope-open-text' : 'fa-circle-exclamation')}`} style={{ marginTop: 2, fontSize: '1.15rem' }} />
+                  <div style={{ flex: 1 }}>{authNotice.text}</div>
+                  <button type="button" onClick={() => setAuthNotice(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'inherit', opacity: 0.6, padding: 0 }}>
+                    <i className="fa-solid fa-xmark" />
+                  </button>
+                </div>
+                {authNotice.email && (authNotice.type === 'warning' || authNotice.type === 'success') && (
+                  <div style={{ marginTop: 10, textAlign: 'right' }}>
+                    <button
+                      type="button"
+                      disabled={authLoading}
+                      onClick={() => handleResendValidationEmail(authNotice.email)}
+                      style={{
+                        background: 'transparent',
+                        border: '1px solid currentColor',
+                        borderRadius: 6,
+                        padding: '4px 10px',
+                        fontSize: '0.78rem',
+                        fontWeight: 600,
+                        color: 'inherit',
+                        cursor: 'pointer'
+                      }}
+                    >
+                      <i className="fa-solid fa-paper-plane" style={{ marginRight: 5 }} />
+                      Renvoyer l'e-mail de validation
+                    </button>
+                  </div>
+                )}
               </div>
             )}
 
