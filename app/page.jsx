@@ -83,6 +83,11 @@ export default function ByAfrikaPage() {
     syncCloudData();
   }, []);
 
+  // Remonter systématiquement tout en haut de page à chaque changement de page
+  useEffect(() => {
+    window.scrollTo({ top: 0, left: 0, behavior: 'instant' });
+  }, [activePage]);
+
   // Sauvegarder panier
   useEffect(() => {
     try {
@@ -685,7 +690,11 @@ export default function ByAfrikaPage() {
                       <button
                         type="button"
                         className="btn-statement-explore"
-                        onClick={() => { setActivePage('boutique'); setFilterGenre(''); }}
+                        onClick={() => {
+                          setActivePage('boutique');
+                          setFilterGenre('');
+                          window.scrollTo({ top: 0, left: 0, behavior: 'instant' });
+                        }}
                       >
                         <span>Découvrir Toute la Boutique</span>
                         <i className="fa-solid fa-arrow-right" />
