@@ -3,6 +3,11 @@ import './globals.css';
 export const metadata = {
   title: 'BY_AFRIKA — Portez vos origines avec confiance',
   description: 'Maison de prêt-à-porter africain haut de gamme. Streetwear chic, élégance et authenticité au cœur de la mode africaine.',
+  authors: [
+    { name: 'Adama Dioume', url: 'https://by-afrika.vercel.app' },
+    { name: 'Mamadou Diaw' }
+  ],
+  creator: 'Mamadou Diaw',
   icons: {
     icon: '/logo.jpg',
   },

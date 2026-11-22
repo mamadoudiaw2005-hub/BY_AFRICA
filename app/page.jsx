@@ -856,6 +856,13 @@ export default function ByAfrikaPage() {
                       Son ambition : faire de BY_AFRIKA une référence panafricaine dans la mode contemporaine, en partant de Dakar pour conquérir le continent et au-delà. Chaque collection est pensée pour inspirer confiance, fierté et élégance.
                     </p>
                   </div>
+
+                  <div className="apropos-section">
+                    <h2><i className="fa-solid fa-laptop-code" /> Conception & Développement Web</h2>
+                    <p>
+                      La plateforme e-commerce et l'architecture web de <strong>BY_AFRIKA</strong> ont été conçues et développées par <strong>Mamadou Diaw</strong>, alliant performance moderne, sécurité et expérience d'achat haut de gamme.
+                    </p>
+                  </div>
                 </div>
 
                 <div className="contact-section" id="contact-sav">
@@ -1091,7 +1098,7 @@ export default function ByAfrikaPage() {
               </div>
 
               <div className="footer-bottom">
-                <p>© 2026 BY_AFRIKA. Tous droits réservés. Maison de prêt-à-porter au Sénégal.</p>
+                <p>© 2026 BY_AFRIKA. Tous droits réservés. Maison de prêt-à-porter au Sénégal • Conçu & Développé par <strong>Mamadou Diaw</strong>.</p>
               </div>
 
               {/* Bouton retour en haut flottant (Style officiel BY_AFRIKA) */}

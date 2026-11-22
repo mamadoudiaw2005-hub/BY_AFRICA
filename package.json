@@ -2,6 +2,7 @@
   "name": "by-afrika",
   "version": "1.0.0",
   "private": true,
+  "author": "Mamadou Diaw",
   "scripts": {
     "dev": "next dev -p 5050",
     "build": "next build",
