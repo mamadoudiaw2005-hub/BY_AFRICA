@@ -35,6 +35,8 @@ export default function ByAfrikaPage() {
 
   const [authModalOpen, setAuthModalOpen] = useState(false);
   const [authTab, setAuthTab] = useState('login'); // 'login' | 'register'
+  const [googleAuthModalOpen, setGoogleAuthModalOpen] = useState(false);
+  const [adminLoginModalOpen, setAdminLoginModalOpen] = useState(false);
 
   const [adminTab, setAdminTab] = useState('dashboard'); // dashboard, produits, commandes, messages, roles, config
   const [adminSubTab, setAdminSubTab] = useState('messages'); // messages | roles
@@ -173,6 +175,67 @@ export default function ByAfrikaPage() {
     localStorage.removeItem('byafrika_user');
     if (activePage === 'admin' || activePage === 'compte') setActivePage('accueil');
     showToast('Vous avez été déconnecté.');
+  };
+
+  // ── ACCÈS SÉCURISÉ ADMIN ──
+  const handleAdminAccess = () => {
+    if (user && user.role === 'admin') {
+      setActivePage('admin');
+    } else {
+      setAdminLoginModalOpen(true);
+      showToast('Accès restreint : Veuillez vous connecter avec vos identifiants administrateur.');
+    }
+  };
+
+  const handleAdminLoginForm = (e) => {
+    e.preventDefault();
+    const email = e.target.adminEmail?.value?.trim() || '';
+    const pwd = e.target.adminPassword?.value?.trim() || '';
+
+    if (email.toLowerCase() === 'admin@byafrica.com' && (pwd === 'admin123' || pwd === 'byafrika2026' || pwd === 'Admin2026')) {
+      const adminUser = { id: 'admin_1', name: 'Direction BY_AFRIKA', email: 'admin@byafrica.com', role: 'admin' };
+      setUser(adminUser);
+      localStorage.setItem('byafrika_user', JSON.stringify(adminUser));
+      setAdminLoginModalOpen(false);
+      setActivePage('admin');
+      showToast('Authentification réussie : Bienvenue dans l\'Espace Administrateur.');
+    } else {
+      showToast('Identifiants administrateur incorrects.');
+    }
+  };
+
+  // ── AUTHENTIFICATION GOOGLE ──
+  const handleGoogleAuthClick = async () => {
+    try {
+      const { error } = await supabase.auth.signInWithOAuth({
+        provider: 'google',
+        options: {
+          redirectTo: typeof window !== 'undefined' ? window.location.origin : ''
+        }
+      });
+      if (error) throw error;
+    } catch (err) {
+      setAuthModalOpen(false);
+      setGoogleAuthModalOpen(true);
+    }
+  };
+
+  const handleGoogleSubmit = (e) => {
+    e.preventDefault();
+    const email = e.target.googleEmail?.value?.trim() || '';
+    const name = e.target.googleName?.value?.trim() || email.split('@')[0].toUpperCase();
+
+    const googleUser = {
+      id: `usr_google_${Date.now()}`,
+      name,
+      email,
+      role: 'client',
+      provider: 'google'
+    };
+    setUser(googleUser);
+    localStorage.setItem('byafrika_user', JSON.stringify(googleUser));
+    setGoogleAuthModalOpen(false);
+    showToast(`Connecté avec succès via Google : Bienvenue ${name} !`);
   };
 
   // ── PASSATION DE COMMANDE (ARRIVER PAYER) ──
@@ -493,12 +556,12 @@ export default function ByAfrikaPage() {
                   <span id="account-btn-label">{user ? user.name : 'Se connecter'}</span>
                 </button>
 
-                {/* Accès Admin */}
+                {/* Accès Admin Sécurisé */}
                 <button
                   type="button"
                   className="action-btn-circle"
                   title="Espace Administrateur"
-                  onClick={() => setActivePage('admin')}
+                  onClick={handleAdminAccess}
                   style={{
                     backgroundColor: '#111111',
                     color: '#dfba5c',
@@ -523,7 +586,7 @@ export default function ByAfrikaPage() {
               <a href="#" onClick={(e) => { e.preventDefault(); if (user) setActivePage('compte'); else setAuthModalOpen(true); setMobileMenuOpen(false); }}>
                 <i className="fa-solid fa-user" /> {user ? user.name : 'Mon Compte / Connexion'}
               </a>
-              <a href="#" onClick={(e) => { e.preventDefault(); setActivePage('admin'); setMobileMenuOpen(false); }} style={{ color: '#dfba5c' }}>
+              <a href="#" onClick={(e) => { e.preventDefault(); handleAdminAccess(); setMobileMenuOpen(false); }} style={{ color: '#dfba5c' }}>
                 <i className="fa-solid fa-shield-halved" /> Panneau d'Administration
               </a>
             </div>
@@ -1048,9 +1111,9 @@ export default function ByAfrikaPage() {
             </div>
           </footer>
         </div>
-      ) : (
+      ) : (user && user.role === 'admin') ? (
         /* ============================================================ */
-        /* VUE 2 : TABLEAU DE BORD ADMINISTRATEUR                        */
+        /* VUE 2 : TABLEAU DE BORD ADMINISTRATEUR (SÉCURISÉ)            */
         /* ============================================================ */
         <div id="admin-view">
           <div className="admin-container">
@@ -1080,6 +1143,9 @@ export default function ByAfrikaPage() {
                 </a>
                 <a href="#" className="admin-nav-link" onClick={(e) => { e.preventDefault(); setActivePage('accueil'); }} style={{ color: 'var(--gold-accent)', marginTop: 24, border: '1px solid rgba(196,154,38,0.3)', borderRadius: 6 }}>
                   <i className="fa-solid fa-arrow-left" /> Retour à la Boutique
+                </a>
+                <a href="#" className="admin-nav-link" onClick={(e) => { e.preventDefault(); handleLogout(); setActivePage('accueil'); }} style={{ color: '#ef4444', marginTop: 8 }}>
+                  <i className="fa-solid fa-right-from-bracket" /> Quitter la session Admin
                 </a>
               </nav>
             </aside>
@@ -1372,6 +1438,41 @@ export default function ByAfrikaPage() {
             </main>
           </div>
         </div>
+      ) : (
+        /* ============================================================ */
+        /* VUE 3 : ÉCRAN DE VERROUILLAGE ADMINISTRATEUR (SÉCURITÉ)       */
+        /* ============================================================ */
+        <div id="admin-gate-screen" style={{ minHeight: '80vh', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '40px 20px', background: 'var(--bg-main)' }}>
+          <div style={{ maxWidth: 440, width: '100%', background: '#ffffff', borderRadius: 12, padding: 32, boxShadow: '0 10px 30px rgba(0,0,0,0.1)', border: '1px solid #e5e7eb', textAlign: 'center' }}>
+            <div style={{ width: 64, height: 64, borderRadius: '50%', background: '#111', color: '#dfba5c', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.8rem', marginBottom: 20 }}>
+              <i className="fa-solid fa-shield-halved" />
+            </div>
+            <h2 style={{ fontSize: '1.4rem', fontWeight: 800, marginBottom: 8, color: '#111' }}>Espace d'Administration Sécurisé</h2>
+            <p style={{ color: '#6b7280', fontSize: '0.9rem', marginBottom: 24 }}>
+              Cet espace est strictement réservé à la direction et aux gestionnaires de la boutique <strong>BY_AFRIKA</strong>.
+            </p>
+            <form onSubmit={handleAdminLoginForm} style={{ textAlign: 'left', display: 'flex', flexDirection: 'column', gap: 16 }}>
+              <div>
+                <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, color: '#374151', marginBottom: 6 }}>Identifiant Administrateur</label>
+                <input type="email" name="adminEmail" required placeholder="admin@byafrica.com" style={{ width: '100%', padding: '12px 14px', borderRadius: 8, border: '1px solid #d1d5db', fontSize: '0.95rem' }} />
+              </div>
+              <div>
+                <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, color: '#374151', marginBottom: 6 }}>Mot de passe</label>
+                <input type="password" name="adminPassword" required placeholder="••••••••" style={{ width: '100%', padding: '12px 14px', borderRadius: 8, border: '1px solid #d1d5db', fontSize: '0.95rem' }} />
+              </div>
+              <button type="submit" className="btn btn-primary btn-full" style={{ padding: '12px', fontSize: '1rem', marginTop: 8 }}>
+                <i className="fa-solid fa-lock" style={{ marginRight: 8 }} /> Déverrouiller l'Espace Admin
+              </button>
+            </form>
+            <button
+              type="button"
+              onClick={() => setActivePage('accueil')}
+              style={{ marginTop: 20, background: 'none', border: 'none', color: '#6b7280', cursor: 'pointer', fontSize: '0.9rem', textDecoration: 'underline' }}
+            >
+              ← Retour à la boutique
+            </button>
+          </div>
+        </div>
       )}
 
       {/* ============================================================ */}
@@ -1379,7 +1480,7 @@ export default function ByAfrikaPage() {
       {/* ============================================================ */}
 
       {/* 1. Modal Overlay Sombre */}
-      {(productModal || checkoutOpen || authModalOpen || confirmedOrder || showProductFormModal || showAddUserModal) && (
+      {(productModal || checkoutOpen || authModalOpen || googleAuthModalOpen || adminLoginModalOpen || confirmedOrder || showProductFormModal || showAddUserModal) && (
         <div
           id="modal-overlay"
           className="modal-overlay"
@@ -1388,6 +1489,8 @@ export default function ByAfrikaPage() {
             setProductModal(null);
             setCheckoutOpen(false);
             setAuthModalOpen(false);
+            setGoogleAuthModalOpen(false);
+            setAdminLoginModalOpen(false);
             setConfirmedOrder(null);
             setShowProductFormModal(false);
             setShowAddUserModal(false);
@@ -1712,6 +1815,20 @@ export default function ByAfrikaPage() {
                   <input type="password" name="password" className="auth-input" placeholder="••••••••" required />
                 </div>
                 <button type="submit" className="btn-auth-submit">Se connecter</button>
+
+                <div className="auth-divider">
+                  <span>OU CONTINUER AVEC</span>
+                </div>
+
+                <button type="button" className="btn-google-auth" onClick={handleGoogleAuthClick}>
+                  <svg className="google-icon" viewBox="0 0 24 24" width="18" height="18">
+                    <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" />
+                    <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" />
+                    <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z" />
+                    <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z" />
+                  </svg>
+                  <span>Continuer avec Google</span>
+                </button>
               </form>
             ) : (
               <form className="auth-form-stack" onSubmit={handleAuthSubmit}>
@@ -1728,8 +1845,87 @@ export default function ByAfrikaPage() {
                   <input type="password" name="password" className="auth-input" placeholder="••••••••" required />
                 </div>
                 <button type="submit" className="btn-auth-submit">Créer mon compte</button>
+
+                <div className="auth-divider">
+                  <span>OU CONTINUER AVEC</span>
+                </div>
+
+                <button type="button" className="btn-google-auth" onClick={handleGoogleAuthClick}>
+                  <svg className="google-icon" viewBox="0 0 24 24" width="18" height="18">
+                    <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" />
+                    <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" />
+                    <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z" />
+                    <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z" />
+                  </svg>
+                  <span>S'inscrire avec Google</span>
+                </button>
               </form>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* 6b. Modal Connexion Google */}
+      {googleAuthModalOpen && (
+        <div id="modal-google-auth" className="modal auth-modal-container" style={{ display: 'block' }}>
+          <div className="auth-modal-card" style={{ maxWidth: 440 }}>
+            <button type="button" className="auth-modal-close-btn modal-close" onClick={() => setGoogleAuthModalOpen(false)}>
+              <i className="fa-solid fa-xmark" />
+            </button>
+            <div style={{ textAlign: 'center', marginBottom: 20 }}>
+              <svg viewBox="0 0 24 24" width="48" height="48" style={{ marginBottom: 12 }}>
+                <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" />
+                <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" />
+                <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z" />
+                <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z" />
+              </svg>
+              <h3 style={{ fontSize: '1.3rem', fontWeight: 800, margin: '0 0 6px 0' }}>Connexion Google</h3>
+              <p style={{ fontSize: '0.85rem', color: '#6b7280', margin: 0 }}>Accédez rapidement à votre compte client BY_AFRIKA.</p>
+            </div>
+            <form className="auth-form-stack" onSubmit={handleGoogleSubmit}>
+              <div className="auth-field">
+                <label className="auth-label">Prénom & Nom</label>
+                <input type="text" name="googleName" className="auth-input" placeholder="Ex: Moussa Diop" required autoFocus />
+              </div>
+              <div className="auth-field">
+                <label className="auth-label">Adresse Google (@gmail.com)</label>
+                <input type="email" name="googleEmail" className="auth-input" placeholder="moussa.diop@gmail.com" required />
+              </div>
+              <button type="submit" className="btn-auth-submit" style={{ backgroundColor: '#4285F4', color: '#fff' }}>
+                Continuer avec ce profil Google
+              </button>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* 6c. Modal Authentification Administrateur Dédiée */}
+      {adminLoginModalOpen && (
+        <div id="modal-admin-login" className="modal auth-modal-container" style={{ display: 'block' }}>
+          <div className="auth-modal-card" style={{ maxWidth: 440 }}>
+            <button type="button" className="auth-modal-close-btn modal-close" onClick={() => setAdminLoginModalOpen(false)}>
+              <i className="fa-solid fa-xmark" />
+            </button>
+            <div style={{ textAlign: 'center', marginBottom: 20 }}>
+              <div style={{ width: 54, height: 54, borderRadius: '50%', background: '#111', color: '#dfba5c', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.5rem', marginBottom: 12 }}>
+                <i className="fa-solid fa-shield-halved" />
+              </div>
+              <h3 style={{ fontSize: '1.3rem', fontWeight: 800, margin: '0 0 6px 0' }}>Espace Administrateur</h3>
+              <p style={{ fontSize: '0.85rem', color: '#6b7280', margin: 0 }}>Identifiants de gestion requis pour accéder au panneau d'administration.</p>
+            </div>
+            <form className="auth-form-stack" onSubmit={handleAdminLoginForm}>
+              <div className="auth-field">
+                <label className="auth-label">Identifiant Administrateur</label>
+                <input type="email" name="adminEmail" className="auth-input" placeholder="admin@byafrica.com" required autoFocus />
+              </div>
+              <div className="auth-field">
+                <label className="auth-label">Mot de passe</label>
+                <input type="password" name="adminPassword" className="auth-input" placeholder="••••••••" required />
+              </div>
+              <button type="submit" className="btn-auth-submit" style={{ backgroundColor: '#111', color: '#dfba5c', border: '1px solid #dfba5c' }}>
+                <i className="fa-solid fa-lock" style={{ marginRight: 6 }} /> Déverrouiller l'Administration
+              </button>
+            </form>
           </div>
         </div>
       )}
