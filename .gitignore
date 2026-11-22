@@ -1,0 +1,62 @@
+# ==============================================================================
+# SÉCURITÉ & CONFIDENTIALITÉ BY_AFRIKA (.gitignore)
+# ==============================================================================
+# Ce fichier empêche toute fuite de clés d'API, mots de passe et données clients sur GitHub
+
+# Node.js & Next.js Builds
+node_modules/
+.next/
+out/
+build/
+dist/
+*.tsbuildinfo
+next-env.d.ts
+
+# Variables d'environnement & Clés secrètes
+.env
+.env.local
+.env.*.local
+*.env
+
+# Données locales sensibles (commandes clients, comptes utilisateurs, messages de réclamation)
+data/orders.json
+data/users.json
+data/messages.json
+
+# Fichiers Python compilés et environnements virtuels
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+.venv/
+ENV/
+
+# Images téléversées dynamiquement (pour ne pas surcharger le dépôt Git)
+uploads/prod_*
+uploads/img_*
+public/uploads/prod_*
+public/uploads/img_*
+
+# Vidéos et enregistrements d'écran
+*.mp4
+*.mov
+*.webm
+*.avi
+*.mkv
+
+# Fichiers journaux / logs
+*.log
+*.log.*
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Fichiers temporaires système et éditeurs
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+*.swp
