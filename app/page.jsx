@@ -53,6 +53,9 @@ export default function ByAfrikaPage() {
   // Formulaires Admin
   const [editingProduct, setEditingProduct] = useState(null);
   const [showProductFormModal, setShowProductFormModal] = useState(false);
+  const [productFormImage, setProductFormImage] = useState('/tshirt-byafrika.jpg');
+  const [productFormSizes, setProductFormSizes] = useState(['S', 'M', 'L', 'XL', 'XXL']);
+  const [productFormColors, setProductFormColors] = useState(['Noir', 'Blanc']);
   const [selectedAdminMessage, setSelectedAdminMessage] = useState(null);
   const [showAddUserModal, setShowAddUserModal] = useState(false);
   const [newCategoryName, setNewCategoryName] = useState('');
@@ -84,6 +87,9 @@ export default function ByAfrikaPage() {
 
       const savedCart = localStorage.getItem('byafrika_cart');
       if (savedCart) setCart(JSON.parse(savedCart));
+
+      const savedOrders = localStorage.getItem('byafrika_orders');
+      if (savedOrders) setOrders(JSON.parse(savedOrders));
 
       const savedConfig = localStorage.getItem('byafrika_config');
       if (savedConfig) setConfig(JSON.parse(savedConfig));
@@ -163,12 +169,18 @@ export default function ByAfrikaPage() {
     window.scrollTo({ top: 0, left: 0, behavior: 'instant' });
   }, [activePage]);
 
-  // Sauvegarder panier
+  // Sauvegarder panier et commandes
   useEffect(() => {
     try {
       localStorage.setItem('byafrika_cart', JSON.stringify(cart));
     } catch (e) { }
   }, [cart]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('byafrika_orders', JSON.stringify(orders));
+    } catch (e) { }
+  }, [orders]);
 
   // Toast
   const showToast = (msg) => {
@@ -674,30 +686,86 @@ export default function ByAfrikaPage() {
     showToast('Votre message a bien été envoyé. Notre service client vous répondra rapidement !');
   };
 
-  // ── GESTION DES PRODUITS (ADMIN) ──
+  // ── GESTION DES PRODUITS (ADMIN : MOBILE & PC) ──
+  const openAddProductModal = () => {
+    setEditingProduct(null);
+    setProductFormImage('/tshirt-byafrika.jpg');
+    setProductFormSizes(['S', 'M', 'L', 'XL', 'XXL']);
+    setProductFormColors(['Noir', 'Blanc']);
+    setShowProductFormModal(true);
+  };
+
+  const openEditProductModal = (prod) => {
+    setEditingProduct(prod);
+    setProductFormImage(prod.image || '/tshirt-byafrika.jpg');
+    setProductFormSizes(Array.isArray(prod.sizes) && prod.sizes.length > 0 ? prod.sizes : ['S', 'M', 'L', 'XL']);
+    setProductFormColors(Array.isArray(prod.colors) && prod.colors.length > 0 ? prod.colors : ['Noir', 'Blanc']);
+    setShowProductFormModal(true);
+  };
+
+  const handleImageFileChange = (e) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      if (file.size > 5 * 1024 * 1024) {
+        showToast('Image trop volumineuse (max 5 Mo).', true);
+        return;
+      }
+      const reader = new FileReader();
+      reader.onload = (event) => {
+        if (event.target?.result) {
+          setProductFormImage(event.target.result);
+          showToast('Photo sélectionnée avec succès !');
+        }
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
+  const toggleFormSize = (size) => {
+    setProductFormSizes(prev => {
+      const arr = Array.isArray(prev) ? prev : [];
+      return arr.includes(size) ? arr.filter(s => s !== size) : [...arr, size];
+    });
+  };
+
+  const toggleFormColor = (color) => {
+    setProductFormColors(prev => {
+      const arr = Array.isArray(prev) ? prev : [];
+      return arr.includes(color) ? arr.filter(c => c !== color) : [...arr, color];
+    });
+  };
+
   const handleSaveProduct = async (e) => {
     e.preventDefault();
     const fd = new FormData(e.target);
+    const chosenSizes = productFormSizes && productFormSizes.length > 0
+      ? productFormSizes
+      : (fd.get('sizes') ? fd.get('sizes').split(',').map(s => s.trim()).filter(Boolean) : ['S', 'M', 'L', 'XL']);
+    const chosenColors = productFormColors && productFormColors.length > 0
+      ? productFormColors
+      : (fd.get('colors') ? fd.get('colors').split(',').map(c => c.trim()).filter(Boolean) : ['Noir', 'Blanc']);
+    const chosenImage = productFormImage || fd.get('image') || '/tshirt-byafrika.jpg';
+
     const prodData = {
       id: editingProduct?.id || `prod_${Date.now()}`,
-      name: fd.get('name'),
-      category: fd.get('category'),
-      genre: fd.get('genre'),
-      price: Number(fd.get('price')),
-      description: fd.get('description'),
-      image: fd.get('image') || '/tshirt-byafrika.jpg',
-      sizes: fd.get('sizes').split(',').map(s => s.trim()),
-      colors: fd.get('colors').split(',').map(c => c.trim()),
-      stock: Number(fd.get('stock')),
+      name: fd.get('name') || 'Article BY_AFRIKA',
+      category: fd.get('category') || 'T-shirts',
+      genre: fd.get('genre') || 'Unisexe',
+      price: Number(fd.get('price')) || 15000,
+      description: fd.get('description') || '',
+      image: chosenImage,
+      sizes: chosenSizes,
+      colors: chosenColors,
+      stock: Number(fd.get('stock')) || 25,
       featured: fd.get('featured') === 'on'
     };
 
     if (editingProduct) {
       setProducts(prev => prev.map(p => p.id === editingProduct.id ? prodData : p));
-      showToast('Produit mis à jour avec succès.');
+      showToast('Vêtement mis à jour avec succès.');
     } else {
       setProducts(prev => [prodData, ...prev]);
-      showToast('Nouveau produit ajouté au catalogue !');
+      showToast('Nouveau vêtement ajouté avec succès au catalogue !');
     }
 
     try {
@@ -716,6 +784,41 @@ export default function ByAfrikaPage() {
       } catch (e) { }
       showToast('Produit retiré du catalogue.');
     }
+  };
+
+  // ── GESTION ET SUPPRESSION DES COMMANDES ──
+  const handleDeleteSingleOrder = async (orderId) => {
+    if (!confirm(`Voulez-vous vraiment supprimer la commande N° ${orderId} de l'historique ?`)) return;
+    setOrders(prev => prev.filter(o => o.id !== orderId));
+    try {
+      await supabase.from('orders').delete().eq('id', orderId);
+    } catch (err) { }
+    showToast(`Commande ${orderId} supprimée de l'historique.`);
+  };
+
+  const handleClearUserOrderHistory = async () => {
+    if (!confirm('Voulez-vous vraiment effacer tout l\'historique de vos commandes ?')) return;
+    const userEmail = user?.email;
+    const userPhone = user?.phone;
+    setOrders(prev => prev.filter(o => {
+      const isClientOrder = (userEmail && o.customer?.email === userEmail) || (userPhone && o.customer?.phone === userPhone);
+      return !isClientOrder;
+    }));
+    try {
+      if (userEmail) {
+        await supabase.from('orders').delete().eq('customer_email', userEmail);
+      }
+    } catch (err) { }
+    showToast('Votre historique de commandes a été effacé avec succès.');
+  };
+
+  const handleClearAllOrdersAdmin = async () => {
+    if (!confirm('ATTENTION : Voulez-vous vraiment supprimer TOUTES les commandes clients du magasin ? Cette action est irréversible.')) return;
+    setOrders([]);
+    try {
+      await supabase.from('orders').delete().neq('id', 'keep_none_placeholder');
+    } catch (err) { }
+    showToast('Tout l\'historique des commandes a été supprimé.');
   };
 
   // ── AJOUT DE RÔLE UTILISATEUR (ADMIN) ──
@@ -1525,7 +1628,7 @@ export default function ByAfrikaPage() {
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 16, marginBottom: 18, borderBottom: '1px solid rgba(223, 186, 92, 0.3)', paddingBottom: 14 }}>
                       <div>
                         <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, color: '#dfba5c', fontWeight: 800, fontSize: '0.85rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-                          <i className="fa-solid fa-shield-halved" /> Direction & Gestion BY_AFRIKA
+                          <i className="fa-solid fa-crown" /> Direction & Gestion BY_AFRIKA
                         </span>
                         <h2 style={{ color: '#ffffff', margin: '6px 0 2px 0', fontSize: '1.4rem' }}>
                           Panneau de Contrôle Administrateur
@@ -1534,14 +1637,45 @@ export default function ByAfrikaPage() {
                           Vous disposez des droits complets d'administration : catalogue de vêtements, commandes clients, réclamations et configuration.
                         </p>
                       </div>
-                      <button
-                        type="button"
-                        className="btn btn-primary"
-                        onClick={() => setActivePage('admin')}
-                        style={{ padding: '12px 24px', fontSize: '0.95rem', fontWeight: 700, display: 'inline-flex', alignItems: 'center', gap: 8 }}
-                      >
-                        <i className="fa-solid fa-gauge-high" /> Ouvrir l'Espace Admin Complet
-                      </button>
+                      <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+                        <button
+                          type="button"
+                          className="btn btn-primary"
+                          onClick={openAddProductModal}
+                          style={{
+                            padding: '12px 20px',
+                            fontSize: '0.92rem',
+                            fontWeight: 700,
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: 8,
+                            backgroundColor: '#dfba5c',
+                            color: '#111',
+                            border: 'none',
+                            borderRadius: 8
+                          }}
+                        >
+                          <i className="fa-solid fa-plus-circle" /> + Ajouter un Vêtement
+                        </button>
+                        <button
+                          type="button"
+                          className="btn btn-outline"
+                          onClick={() => setActivePage('admin')}
+                          style={{
+                            padding: '12px 20px',
+                            fontSize: '0.92rem',
+                            fontWeight: 700,
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: 8,
+                            color: '#fff',
+                            borderColor: '#dfba5c',
+                            borderRadius: 8
+                          }}
+                        >
+                          <i className="fa-solid fa-gauge-high" /> Ouvrir l'Espace Admin
+                        </button>
+                      </div>
                     </div>
 
                     {/* Raccourcis directs vers tous les contrôles */}
@@ -1591,16 +1725,56 @@ export default function ByAfrikaPage() {
                 )}
 
                 <div className="compte-content">
-                  <h2>Historique de mes commandes</h2>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20, flexWrap: 'wrap', gap: 12 }}>
+                    <h2 style={{ margin: 0 }}>Historique de mes commandes</h2>
+                    {orders.filter(o => o.customer?.email === user?.email || o.customer?.phone === user?.phone).length > 0 && (
+                      <button
+                        type="button"
+                        className="btn btn-outline"
+                        onClick={handleClearUserOrderHistory}
+                        style={{
+                          color: '#ef4444',
+                          borderColor: 'rgba(239, 68, 68, 0.4)',
+                          fontSize: '0.82rem',
+                          padding: '6px 14px',
+                          borderRadius: 6,
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: 6
+                        }}
+                      >
+                        <i className="fa-solid fa-trash-can" /> Supprimer mon historique
+                      </button>
+                    )}
+                  </div>
                   {orders.filter(o => o.customer?.email === user?.email || o.customer?.phone === user?.phone).length === 0 ? (
                     <p className="empty-state">Vous n'avez pas encore passé de commande avec ces coordonnées.</p>
                   ) : (
                     <div className="orders-list">
                       {orders.filter(o => o.customer?.email === user?.email || o.customer?.phone === user?.phone).map(o => (
                         <div key={o.id} className="order-card" style={{ background: '#fff', border: '1px solid var(--border-color)', padding: 20, borderRadius: 12, marginBottom: 16 }}>
-                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
-                            <strong>N° {o.id}</strong>
-                            <span className="badge-type">{o.status}</span>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12, flexWrap: 'wrap', gap: 8 }}>
+                            <div>
+                              <strong>N° {o.id}</strong>
+                              <span className="badge-type" style={{ marginLeft: 10 }}>{o.status}</span>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => handleDeleteSingleOrder(o.id)}
+                              style={{
+                                background: 'transparent',
+                                border: 'none',
+                                color: '#ef4444',
+                                fontSize: '0.82rem',
+                                cursor: 'pointer',
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: 4
+                              }}
+                              title="Supprimer cette commande"
+                            >
+                              <i className="fa-solid fa-trash-can" /> Supprimer
+                            </button>
                           </div>
                           <p style={{ fontSize: '0.88rem', color: '#666' }}>Date : {new Date(o.createdAt).toLocaleDateString('fr-FR')}</p>
                           <p style={{ fontSize: '0.88rem', color: '#666' }}>Mode : {o.deliveryType}</p>
@@ -1742,6 +1916,25 @@ export default function ByAfrikaPage() {
                 <div style={{ display: 'flex', gap: 8 }}>
                   <button
                     type="button"
+                    onClick={openAddProductModal}
+                    style={{
+                      background: '#dfba5c',
+                      border: 'none',
+                      color: '#111',
+                      padding: '5px 10px',
+                      borderRadius: '6px',
+                      fontSize: '0.78rem',
+                      fontWeight: 700,
+                      cursor: 'pointer',
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: 4
+                    }}
+                  >
+                    <i className="fa-solid fa-plus" /> Vêtement
+                  </button>
+                  <button
+                    type="button"
                     onClick={() => setActivePage('accueil')}
                     style={{
                       background: 'rgba(255,255,255,0.08)',
@@ -1783,7 +1976,7 @@ export default function ByAfrikaPage() {
 
               <div className="admin-desktop-topbar">
                 <div className="admin-topbar-info">
-                  <span className="admin-topbar-badge"><i className="fa-solid fa-shield-halved" /> Administration</span>
+                  <span className="admin-topbar-badge"><i className="fa-solid fa-sliders" /> Panneau de Gestion</span>
                   <span className="admin-topbar-user">Connecté : <strong>Adama Dioume (Fondateur)</strong></span>
                 </div>
                 <div className="admin-topbar-actions">
@@ -1848,7 +2041,7 @@ export default function ByAfrikaPage() {
                 <div className="admin-section active">
                   <div className="admin-section-header">
                     <h2>Gestion du Catalogue ({products.length})</h2>
-                    <button type="button" className="btn btn-primary" onClick={() => { setEditingProduct(null); setShowProductFormModal(true); }}>
+                    <button type="button" className="btn btn-primary" onClick={openAddProductModal}>
                       <i className="fa-solid fa-plus" /> Ajouter un Vêtement
                     </button>
                   </div>
@@ -1877,7 +2070,7 @@ export default function ByAfrikaPage() {
                             <td><strong style={{ color: '#c49a26' }}>{formatPrice(p.price)}</strong></td>
                             <td>{p.stock} pcs</td>
                             <td>
-                              <button type="button" className="btn btn-sm btn-outline" style={{ marginRight: 6 }} onClick={() => { setEditingProduct(p); setShowProductFormModal(true); }}>Modifier</button>
+                              <button type="button" className="btn btn-sm btn-outline" style={{ marginRight: 6 }} onClick={() => openEditProductModal(p)}>Modifier</button>
                               <button type="button" className="btn btn-sm btn-outline" style={{ color: '#ef4444' }} onClick={() => handleDeleteProduct(p.id)}>Supprimer</button>
                             </td>
                           </tr>
@@ -1891,7 +2084,30 @@ export default function ByAfrikaPage() {
               {/* TAB : COMMANDES */}
               {adminTab === 'commandes' && (
                 <div className="admin-section active">
-                  <h2>Gestion des Commandes Clients ({orders.length})</h2>
+                  <div className="admin-section-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 12, marginBottom: 20 }}>
+                    <h2>Gestion des Commandes Clients ({orders.length})</h2>
+                    {orders.length > 0 && (
+                      <button
+                        type="button"
+                        className="btn btn-outline"
+                        onClick={handleClearAllOrdersAdmin}
+                        style={{
+                          color: '#ef4444',
+                          borderColor: '#ef4444',
+                          background: 'rgba(239, 68, 68, 0.05)',
+                          fontSize: '0.85rem',
+                          fontWeight: 700,
+                          padding: '8px 16px',
+                          borderRadius: 8,
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: 6
+                        }}
+                      >
+                        <i className="fa-solid fa-trash-can" /> Supprimer tout l'historique
+                      </button>
+                    )}
+                  </div>
                   <div className="admin-table-wrapper">
                     <table className="admin-table">
                       <thead>
@@ -1903,11 +2119,12 @@ export default function ByAfrikaPage() {
                           <th>Mode</th>
                           <th>Total</th>
                           <th>Statut</th>
+                          <th>Actions</th>
                         </tr>
                       </thead>
                       <tbody>
                         {orders.length === 0 ? (
-                          <tr><td colSpan={7} style={{ textAlign: 'center', padding: 30 }}>Aucune commande enregistrée pour le moment.</td></tr>
+                          <tr><td colSpan={8} style={{ textAlign: 'center', padding: 30 }}>Aucune commande enregistrée pour le moment.</td></tr>
                         ) : (
                           orders.map(o => (
                             <tr key={o.id}>
@@ -1937,6 +2154,17 @@ export default function ByAfrikaPage() {
                                   <option value="Livrée">Livrée</option>
                                   <option value="Annulée">Annulée</option>
                                 </select>
+                              </td>
+                              <td>
+                                <button
+                                  type="button"
+                                  className="btn btn-sm btn-outline"
+                                  style={{ color: '#ef4444', borderColor: 'rgba(239, 68, 68, 0.4)' }}
+                                  onClick={() => handleDeleteSingleOrder(o.id)}
+                                  title="Supprimer cette commande"
+                                >
+                                  <i className="fa-solid fa-trash-can" />
+                                </button>
                               </td>
                             </tr>
                           ))
@@ -2988,23 +3216,51 @@ export default function ByAfrikaPage() {
         </div>
       )}
 
-      {/* 7. Modal Admin Ajout/Modification Produit */}
+      {/* 7. Modal Admin Ajout/Modification Produit (Mobile & Ordinateur) */}
       {showProductFormModal && (
         <div id="modal-admin-product" className="modal modal-admin-dialog" style={{ display: 'block' }}>
-          <div className="modal-content">
+          <div className="modal-content" style={{ padding: '24px' }}>
             <button type="button" className="auth-modal-close-btn modal-close" onClick={() => setShowProductFormModal(false)}>
               <i className="fa-solid fa-xmark" />
             </button>
-            <div style={{ marginBottom: 20 }}>
-              <h2 style={{ fontSize: '1.35rem', fontWeight: 800, margin: '0 0 4px 0', display: 'flex', alignItems: 'center', gap: 8 }}>
+            <div style={{ marginBottom: 18 }}>
+              <h2 style={{ fontSize: '1.35rem', fontWeight: 800, margin: '0 0 4px 0', display: 'flex', alignItems: 'center', gap: 8, color: '#111' }}>
                 <i className="fa-solid fa-shirt" style={{ color: '#c49a26' }} />
                 {editingProduct ? 'Modifier le Vêtement' : 'Ajouter un Vêtement'}
               </h2>
               <p style={{ fontSize: '0.85rem', color: '#666', margin: 0 }}>
-                {editingProduct ? 'Modifiez les informations de cet article du catalogue.' : 'Remplissez les détails du vêtement pour l\'ajouter immédiatement au catalogue.'}
+                {editingProduct ? 'Modifiez les informations de cet article du catalogue.' : 'Prenez une photo ou sélectionnez une image, ajustez les tailles et ajoutez l\'article au catalogue.'}
               </p>
             </div>
             <form className="form-stack" onSubmit={handleSaveProduct}>
+              {/* Photo du Vêtement (Camera / Galerie / Fichier) */}
+              <div style={{ background: '#f9fafb', border: '2px dashed #d1d5db', borderRadius: 12, padding: '16px', marginBottom: 18 }}>
+                <label style={{ display: 'block', fontWeight: 700, fontSize: '0.88rem', color: '#111', marginBottom: 10 }}>
+                  <i className="fa-solid fa-camera" style={{ color: '#c49a26', marginRight: 6 }} />
+                  Photo du Vêtement (depuis Téléphone ou Ordinateur)
+                </label>
+                <div style={{ display: 'flex', gap: 16, alignItems: 'center', flexWrap: 'wrap' }}>
+                  <div style={{ width: 88, height: 88, borderRadius: 10, overflow: 'hidden', border: '1px solid #d1d5db', backgroundColor: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                    <img src={productFormImage || '/tshirt-byafrika.jpg'} alt="Aperçu vêtement" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                  </div>
+                  <div style={{ flex: 1, minWidth: 200 }}>
+                    <label style={{ display: 'inline-flex', alignItems: 'center', gap: 8, background: '#111', color: '#dfba5c', border: '1px solid #dfba5c', padding: '10px 16px', borderRadius: 8, fontSize: '0.88rem', fontWeight: 700, cursor: 'pointer', marginBottom: 10 }}>
+                      <i className="fa-solid fa-cloud-arrow-up" /> Prendre une photo / Galerie
+                      <input type="file" accept="image/*" onChange={handleImageFileChange} style={{ display: 'none' }} />
+                    </label>
+                    <input
+                      type="text"
+                      name="image"
+                      className="form-input"
+                      value={productFormImage}
+                      onChange={(e) => setProductFormImage(e.target.value)}
+                      placeholder="Ou lien URL / fichier (ex: /tshirt-byafrika.jpg)"
+                      style={{ fontSize: '0.82rem', padding: '8px 12px' }}
+                    />
+                  </div>
+                </div>
+              </div>
+
               <div className="form-grid">
                 <div className="form-group">
                   <label className="form-label">Nom de l'article *</label>
@@ -3032,29 +3288,91 @@ export default function ByAfrikaPage() {
                   <label className="form-label">Stock disponible (unités) *</label>
                   <input type="number" name="stock" className="form-input" placeholder="25" defaultValue={editingProduct?.stock || 25} required />
                 </div>
-                <div className="form-group">
-                  <label className="form-label">Image (ex: /tshirt-byafrika.jpg ou URL)</label>
-                  <input type="text" name="image" className="form-input" placeholder="/tshirt-byafrika.jpg" defaultValue={editingProduct?.image || '/tshirt-byafrika.jpg'} />
-                </div>
-                <div className="form-group">
-                  <label className="form-label">Tailles (séparées par une virgule)</label>
-                  <input type="text" name="sizes" className="form-input" placeholder="S, M, L, XL, XXL" defaultValue={editingProduct?.sizes?.join(', ') || 'S, M, L, XL, XXL'} />
-                </div>
-                <div className="form-group">
-                  <label className="form-label">Couleurs (séparées par une virgule)</label>
-                  <input type="text" name="colors" className="form-input" placeholder="Noir, Blanc" defaultValue={editingProduct?.colors?.join(', ') || 'Noir, Blanc'} />
+              </div>
+
+              {/* Sélecteur de Tailles Tactile pour Mobile & PC */}
+              <div className="form-group full-width" style={{ marginTop: 12 }}>
+                <label className="form-label" style={{ fontWeight: 700, marginBottom: 8, display: 'flex', justifyContent: 'space-between' }}>
+                  <span>Tailles disponibles (Touchez pour sélectionner) *</span>
+                  <span style={{ fontSize: '0.78rem', color: '#c49a26' }}>{productFormSizes.length} sélectionnée(s)</span>
+                </label>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+                  {['XS', 'S', 'M', 'L', 'XL', 'XXL', '3XL'].map(s => {
+                    const isSelected = productFormSizes.includes(s);
+                    return (
+                      <button
+                        key={s}
+                        type="button"
+                        onClick={() => toggleFormSize(s)}
+                        style={{
+                          padding: '8px 14px',
+                          borderRadius: 6,
+                          border: isSelected ? '2px solid #111' : '1px solid #d1d5db',
+                          background: isSelected ? '#111' : '#fff',
+                          color: isSelected ? '#dfba5c' : '#374151',
+                          fontWeight: 700,
+                          fontSize: '0.88rem',
+                          cursor: 'pointer',
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: 6
+                        }}
+                      >
+                        {isSelected && <i className="fa-solid fa-check" style={{ fontSize: '0.75rem' }} />}
+                        {s}
+                      </button>
+                    );
+                  })}
                 </div>
               </div>
-              <div className="form-group full-width" style={{ marginTop: 8 }}>
+
+              {/* Sélecteur de Couleurs Tactile pour Mobile & PC */}
+              <div className="form-group full-width" style={{ marginTop: 12 }}>
+                <label className="form-label" style={{ fontWeight: 700, marginBottom: 8, display: 'flex', justifyContent: 'space-between' }}>
+                  <span>Couleurs disponibles (Touchez pour sélectionner) *</span>
+                  <span style={{ fontSize: '0.78rem', color: '#c49a26' }}>{productFormColors.length} sélectionnée(s)</span>
+                </label>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+                  {['Noir', 'Blanc', 'Bleu Marine', 'Kaki', 'Gris', 'Beige', 'Bordeaux', 'Marron'].map(c => {
+                    const isSelected = productFormColors.includes(c);
+                    return (
+                      <button
+                        key={c}
+                        type="button"
+                        onClick={() => toggleFormColor(c)}
+                        style={{
+                          padding: '8px 14px',
+                          borderRadius: 6,
+                          border: isSelected ? '2px solid #111' : '1px solid #d1d5db',
+                          background: isSelected ? '#111' : '#fff',
+                          color: isSelected ? '#dfba5c' : '#374151',
+                          fontWeight: 700,
+                          fontSize: '0.88rem',
+                          cursor: 'pointer',
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: 6
+                        }}
+                      >
+                        {isSelected && <i className="fa-solid fa-check" style={{ fontSize: '0.75rem' }} />}
+                        {c}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              <div className="form-group full-width" style={{ marginTop: 12 }}>
                 <label className="form-label">Description du vêtement</label>
                 <textarea name="description" className="form-input" rows={3} placeholder="Matière en coton peigné premium, coupe moderne..." defaultValue={editingProduct?.description || ''} />
               </div>
+
               <div style={{ display: 'flex', gap: 12, marginTop: 18 }}>
-                <button type="button" className="btn btn-outline" style={{ flex: 1 }} onClick={() => setShowProductFormModal(false)}>
+                <button type="button" className="btn btn-outline" style={{ flex: 1, padding: '12px' }} onClick={() => setShowProductFormModal(false)}>
                   Annuler
                 </button>
-                <button type="submit" className="btn btn-primary" style={{ flex: 2 }}>
-                  <i className="fa-solid fa-check" style={{ marginRight: 6 }} />
+                <button type="submit" className="btn btn-primary" style={{ flex: 2, padding: '12px', fontSize: '0.95rem', fontWeight: 700, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
+                  <i className="fa-solid fa-check" />
                   {editingProduct ? 'Enregistrer les modifications' : 'Ajouter au catalogue'}
                 </button>
               </div>
