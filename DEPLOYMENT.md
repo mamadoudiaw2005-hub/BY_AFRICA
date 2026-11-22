@@ -25,7 +25,7 @@ git init
 git add .
 git commit -m "BY_AFRIKA v1.0.0"
 git branch -M main
-git remote add origin https://github.com/VOTRE_NOM_UTILISATEUR/BY_Africa.git
+git remote add origin https://github.com/VOTRE_NOM_UTILISATEUR/BY_AFRIKA.git
 git push -u origin main
 ```
 
@@ -35,7 +35,7 @@ git push -u origin main
 
 1. Rendez-vous sur votre compte **[Vercel](https://vercel.com)**.
 2. Cliquez sur le bouton bleu **"Add New..."** ➔ **"Project"**.
-3. Sélectionnez votre dépôt GitHub **`BY_Africa`** et cliquez sur **Import**.
+3. Sélectionnez votre dépôt GitHub **`BY_AFRIKA`** et cliquez sur **Import**.
 4. Dans le formulaire :
    - **Framework Preset** : Détecté automatiquement sur `Next.js` !
    - **Root Directory** : `./` (laissez par défaut).

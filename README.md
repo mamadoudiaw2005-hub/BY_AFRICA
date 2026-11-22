@@ -68,7 +68,7 @@ Consultez le guide détaillé dans [DEPLOYMENT.md](file:///c:/Users/mamad/OneDri
 ## 📁 Architecture du Projet
 
 ```
-BY_Africa/
+BY_AFRIKA/
 ├── app/
 │   ├── layout.jsx        # Structure racine, polices et métadonnées SEO
 │   ├── globals.css       # Styles globaux (responsive, thème épuré)
