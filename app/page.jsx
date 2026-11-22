@@ -872,6 +872,74 @@ export default function ByAfrikaPage() {
           )}
 
           {/* ═══════════════════════════════════════════════════════════ */}
+          {/* PAGE : POLITIQUE DE CONFIDENTIALITÉ & GESTION DES COOKIES   */}
+          {/* ═══════════════════════════════════════════════════════════ */}
+          {activePage === 'confidentialite' && (
+            <section id="page-confidentialite" className="page active">
+              <div className="container">
+                <div className="policy-header text-center" style={{ textAlign: 'center', marginBottom: 36 }}>
+                  <span className="badge badge-prep" style={{ display: 'inline-block', marginBottom: 12, padding: '4px 12px', background: 'rgba(223, 186, 92, 0.15)', color: 'var(--gold-accent)', borderRadius: 20, fontSize: '0.82rem', fontWeight: 700 }}>
+                    Transparence & Protection
+                  </span>
+                  <h1 style={{ fontSize: '2.2rem', marginBottom: 12 }}>Politique de Confidentialité & Gestion des Cookies</h1>
+                  <p style={{ color: 'var(--text-secondary)', maxWidth: 700, margin: '0 auto 40px auto', fontSize: '0.95rem' }}>
+                    Chez <strong>BY_AFRIKA</strong>, la confiance de notre communauté est sacrée. Découvrez en toute transparence comment vos informations sont protégées dans le cadre de notre service.
+                  </p>
+                </div>
+
+                <div className="apropos-content">
+                  <div className="apropos-section">
+                    <h2><i className="fa-solid fa-shield-halved" /> 1. Engagement & Responsable du Traitement</h2>
+                    <p>
+                      La marque <strong>BY_AFRIKA</strong>, basée à Dakar (Sénégal) et administrée par la Direction BY_AFRIKA, s'engage à protéger la vie privée de ses clients et visiteurs conformément aux réglementations applicables sur la protection des données personnelles.
+                    </p>
+                    <p>
+                      Nous collectons uniquement les informations strictement indispensables au traitement, à la confection et à la livraison de vos commandes vestimentaires.
+                    </p>
+                  </div>
+
+                  <div className="apropos-section">
+                    <h2><i className="fa-solid fa-database" /> 2. Données Collectées & Finalités</h2>
+                    <p>Dans le cadre du modèle <strong>« Arriver Payer » (Paiement à la livraison)</strong>, nous collectons :</p>
+                    <ul style={{ color: 'var(--text-secondary)', paddingLeft: 20, marginBottom: 12, lineHeight: 1.8 }}>
+                      <li><strong>Nom complet</strong> : pour identifier le destinataire du colis.</li>
+                      <li><strong>Numéro de téléphone</strong> : essentiel pour coordonner la remise directe par notre livreur à Dakar ou en région.</li>
+                      <li><strong>Adresse géographique complète</strong> : quartier, repère ou indications utiles pour vous acheminer la commande.</li>
+                      <li><strong>Adresse email</strong> : pour vous envoyer le reçu de commande et le suivi d'expédition.</li>
+                      <li><strong>Taille et couleur</strong> : pour préparer le vêtement parfaitement adapté à votre morphologie.</li>
+                    </ul>
+                    <p>
+                      <strong>Important :</strong> Nous n'enregistrons <em>aucune coordonnée bancaire</em> sur notre serveur puisque l'intégralité du règlement s'effectue en main propre lors de la remise du colis.
+                    </p>
+                  </div>
+
+                  <div className="apropos-section">
+                    <h2><i className="fa-solid fa-cookie-bite" /> 3. Utilisation des Cookies</h2>
+                    <p>Les cookies sont de petits fichiers temporaires stockés localement sur votre appareil. Sur BY_AFRIKA, ils ont pour uniques vocations :</p>
+                    <ul style={{ color: 'var(--text-secondary)', paddingLeft: 20, marginBottom: 12, lineHeight: 1.8 }}>
+                      <li><strong>Cookies de Panier (Essentiels)</strong> : conserver vos articles sélectionnés dans votre panier même si vous actualisez la page.</li>
+                      <li><strong>Cookies de Session (Sécurité)</strong> : maintenir votre connexion à votre Espace Client ou Administrateur.</li>
+                      <li><strong>Cookies de Préférences</strong> : mémoriser votre choix sur les cookies.</li>
+                    </ul>
+                    <p>Nous n'utilisons aucun traceur publicitaire intrusif ou de revente à des tiers.</p>
+                  </div>
+
+                  <div className="apropos-section">
+                    <h2><i className="fa-solid fa-user-check" /> 4. Vos Droits & Contact</h2>
+                    <p>Vous disposez à tout moment d'un droit d'accès, de rectification ou de suppression totale de vos informations personnelles enregistrées sur BY_AFRIKA.</p>
+                    <div style={{ background: 'var(--bg-secondary)', padding: 18, borderRadius: 8, marginTop: 12, border: '1px solid var(--border-color)' }}>
+                      <p><strong>Direction Officielle BY_AFRIKA</strong></p>
+                      <p>📞 Téléphone & WhatsApp : <strong>{config.phone || '+221 77 000 00 00'}</strong></p>
+                      <p>📧 Email officiel : <strong>{config.email || 'contact@byafrica.com'}</strong></p>
+                      <p>📍 Dakar, Sénégal</p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </section>
+          )}
+
+          {/* ═══════════════════════════════════════════════════════════ */}
           {/* PAGE 7 : ESPACE CLIENT                                      */}
           {/* ═══════════════════════════════════════════════════════════ */}
           {activePage === 'compte' && (
@@ -945,6 +1013,7 @@ export default function ByAfrikaPage() {
                     <li><a href="#" onClick={(e) => { e.preventDefault(); setActivePage('hommes'); window.scrollTo({ top: 0, behavior: 'smooth' }); }}>Collection Homme</a></li>
                     <li><a href="#" onClick={(e) => { e.preventDefault(); setActivePage('femmes'); window.scrollTo({ top: 0, behavior: 'smooth' }); }}>Collection Femme</a></li>
                     <li><a href="#" onClick={(e) => { e.preventDefault(); setActivePage('apropos'); window.scrollTo({ top: 0, behavior: 'smooth' }); }}>À Propos</a></li>
+                    <li><a href="#" onClick={(e) => { e.preventDefault(); setActivePage('confidentialite'); window.scrollTo({ top: 0, behavior: 'smooth' }); }}>Confidentialité</a></li>
                   </ul>
                 </div>
                 <div className="footer-col">
@@ -965,6 +1034,17 @@ export default function ByAfrikaPage() {
               <div className="footer-bottom">
                 <p>© 2026 BY_AFRIKA. Tous droits réservés. Maison de prêt-à-porter au Sénégal.</p>
               </div>
+
+              {/* Bouton retour en haut flottant (Style officiel BY_AFRIKA) */}
+              <button
+                type="button"
+                className="scroll-top-btn"
+                id="scroll-top-btn"
+                aria-label="Retour en haut de page"
+                onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}
+              >
+                <i className="fa-solid fa-arrow-up" />
+              </button>
             </div>
           </footer>
         </div>
@@ -1733,7 +1813,15 @@ export default function ByAfrikaPage() {
               <h4>Gestion des Cookies & Vie Privée</h4>
               <p>
                 Nous utilisons des cookies essentiels pour enregistrer vos sélections de panier et vous garantir une
-                expérience d'achat optimale sur <strong>BY_AFRIKA</strong>.
+                expérience d'achat optimale sur <strong>BY_AFRIKA</strong>. Consultez notre{' '}
+                <a
+                  href="#"
+                  className="cookie-policy-link"
+                  onClick={(e) => { e.preventDefault(); setActivePage('confidentialite'); window.scrollTo({ top: 0, behavior: 'smooth' }); }}
+                  style={{ color: '#dfba5c', textDecoration: 'underline' }}
+                >
+                  Politique de Confidentialité
+                </a>.
               </p>
             </div>
             <div className="cookie-actions">
