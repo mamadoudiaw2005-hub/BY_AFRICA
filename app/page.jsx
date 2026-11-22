@@ -818,81 +818,88 @@ export default function ByAfrikaPage() {
           )}
 
           {/* ═══════════════════════════════════════════════════════════ */}
-          {/* PAGE 5 : À PROPOS                                           */}
+          {/* PAGE 5 : À PROPOS DE BY_AFRIKA & SERVICE CLIENT             */}
           {/* ═══════════════════════════════════════════════════════════ */}
-          {activePage === 'apropos' && (
+          {(activePage === 'apropos' || activePage === 'contact') && (
             <section id="page-apropos" className="page active">
               <div className="container">
                 <div className="apropos-hero">
                   <h1>À propos de BY_AFRIKA</h1>
-                  <p>Un projet pour la fierté Africaine — porté par la passion et la créativité de Dakar.</p>
+                  <p>Un projet pour la fierté Africaine — porté par la passion et la jeunesse de Dakar.</p>
                 </div>
+
                 <div className="apropos-content">
                   <div className="apropos-section">
                     <h2><i className="fa-solid fa-book-open" /> Notre Histoire</h2>
                     <p>
                       BY_AFRIKA est né d'un rêve simple mais puissant : créer une marque de vêtements qui célèbre l'identité
                       africaine avec style et modernité. Fondée à Dakar, au cœur du Sénégal, notre marque fusionne les racines
-                      profondes du continent avec les tendances contemporaines du streetwear et de l'élégance internationale.
+                      profondes du continent avec les tendances contemporaines de la mode internationale.
                     </p>
                     <p>
                       Chaque pièce que nous créons raconte une histoire — celle d'un continent riche en couleurs, en traditions
-                      et en résilience. Porter BY_AFRIKA, c'est affirmer sa fierté d'être Africain au quotidien.
+                      et en résilience. Nous croyons que la mode est un moyen d'expression, et que porter BY_AFRIKA, c'est
+                      affirmer sa fierté d'être Africain.
                     </p>
                   </div>
+
                   <div className="apropos-section">
                     <h2><i className="fa-solid fa-bullseye" /> Notre Mission</h2>
                     <p>
-                      Notre mission est de rendre la mode africaine haut de gamme accessible et désirable. Nous nous engageons
-                      à concevoir des pièces de prestige avec des matières nobles, durables et confectionnées dans les règles de l'art.
+                      Notre mission est de rendre la mode africaine accessible, moderne et désirable. Nous voulons que chaque
+                      personne qui porte nos créations ressente la puissance et la beauté de ses origines.
+                    </p>
+                    <p>
+                      Nous nous engageons à proposer des vêtements de qualité premium, fabriqués avec soin et respect, à des
+                      prix justes pour notre communauté. BY_AFRIKA, c'est plus qu'une marque — c'est un mouvement.
+                    </p>
+                  </div>
+
+                  <div className="apropos-section">
+                    <h2><i className="fa-solid fa-user-tie" /> Le Fondateur & La Vision</h2>
+                    <p>
+                      Originaire de Dakar, Sénégal. Passionné de mode et animé par un profond amour pour l'Afrique,
+                      le fondateur a créé BY_AFRIKA pour donner une voix vestimentaire et stylée à la jeunesse africaine.
+                    </p>
+                    <p>
+                      Son ambition : faire de BY_AFRIKA une référence panafricaine dans la mode contemporaine, en partant de Dakar pour
+                      conquérir le continent et au-delà. Chaque collection est pensée pour inspirer confiance, fierté et
+                      élégance.
                     </p>
                   </div>
                 </div>
-              </div>
-            </section>
-          )}
 
-          {/* ═══════════════════════════════════════════════════════════ */}
-          {/* PAGE 6 : CONTACT & RÉCLAMATIONS                             */}
-          {/* ═══════════════════════════════════════════════════════════ */}
-          {activePage === 'contact' && (
-            <section id="page-contact" className="page active">
-              <div className="container">
-                <div className="contact-layout">
+                <div className="contact-section" id="contact-sav">
+                  <h2><i className="fa-solid fa-phone" /> Nous Contacter</h2>
                   <div className="contact-info">
-                    <h1>Contactez-nous</h1>
-                    <p>Une question sur une commande, un modèle ou un conseil taille ? Notre équipe est à votre disposition.</p>
-                    <div className="contact-details">
-                      <div className="contact-item">
-                        <i className="fa-solid fa-location-dot" />
-                        <div>
-                          <strong>Adresse</strong>
-                          <p>{config.address || 'Dakar, Sénégal'}</p>
-                        </div>
-                      </div>
-                      <div className="contact-item">
-                        <i className="fa-solid fa-phone" />
-                        <div>
-                          <strong>Téléphone</strong>
-                          <p>{config.phone || '+221 77 000 00 00'}</p>
-                        </div>
-                      </div>
-                      <div className="contact-item">
-                        <i className="fa-solid fa-envelope" />
-                        <div>
-                          <strong>Email</strong>
-                          <p>{config.email || 'contact@byafrica.com'}</p>
-                        </div>
-                      </div>
+                    <div className="contact-item">
+                      <i className="fa-solid fa-phone" />
+                      <span>{config.phone || '+221 77 000 00 00'}</span>
+                    </div>
+                    <div className="contact-item">
+                      <i className="fa-solid fa-envelope" />
+                      <span>{config.email || 'contact@byafrica.com'}</span>
+                    </div>
+                    <div className="contact-item">
+                      <i className="fa-solid fa-location-dot" />
+                      <span>{config.address || 'Dakar, Sénégal'}</span>
+                    </div>
+                    <div className="contact-item">
+                      <i className="fa-brands fa-whatsapp" />
+                      <span>{config.phone || '+221 77 000 00 00'}</span>
                     </div>
                   </div>
 
+                  {/* Formulaire Réclamation & Message Client Direct */}
                   <div className="contact-form-card">
-                    <h2>Envoyer un message / Réclamation</h2>
-                    <p style={{ fontSize: '0.86rem', color: 'var(--text-secondary)', marginBottom: '18px', lineHeight: 1.4 }}>
-                      Remplissez ce formulaire et nous vous répondrons directement par WhatsApp ou email.
+                    <h3>
+                      <i className="fa-solid fa-headset" style={{ color: 'var(--gold-accent)' }} /> Formulaire de Réclamation & Message
+                    </h3>
+                    <p>
+                      Une question sur votre commande, une demande de taille ou une réclamation ? Remplissez ce formulaire et
+                      notre équipe vous répondra immédiatement sur WhatsApp ou par email.
                     </p>
-                    <form className="form-stack" onSubmit={handleContactSubmit}>
+                    <form id="form-contact-claim" className="form-stack" onSubmit={handleContactSubmit}>
                       <div className="form-grid">
                         <div className="form-group">
                           <label className="form-label">Votre nom complet <span style={{ color: '#ef4444' }}>*</span></label>
@@ -911,7 +918,7 @@ export default function ByAfrikaPage() {
                           <select name="type" className="form-input">
                             <option value="Question Produit">Question sur un produit / taille</option>
                             <option value="Réclamation Commande">Réclamation sur une commande</option>
-                            <option value="Livraison">Question sur la livraison</option>
+                            <option value="Livraison">Question ou délai de livraison</option>
                             <option value="Autre">Autre demande</option>
                           </select>
                         </div>
@@ -921,8 +928,8 @@ export default function ByAfrikaPage() {
                         <input type="text" name="orderId" className="form-input" placeholder="Ex: CMD-1795308289504" />
                       </div>
                       <div className="form-group full-width">
-                        <label className="form-label">Votre message <span style={{ color: '#ef4444' }}>*</span></label>
-                        <textarea name="message" className="form-input" rows={3} placeholder="Expliquez-nous votre demande..." required />
+                        <label className="form-label">Votre message ou réclamation <span style={{ color: '#ef4444' }}>*</span></label>
+                        <textarea name="message" className="form-input" rows={3} placeholder="Décrivez votre demande..." required />
                       </div>
                       <button type="submit" className="btn btn-primary" style={{ alignSelf: 'flex-start' }}>
                         <i className="fa-solid fa-paper-plane" /> Envoyer le message
@@ -1086,7 +1093,7 @@ export default function ByAfrikaPage() {
                     <li><i className="fa-solid fa-phone" style={{ color: '#dfba5c' }} /> {config.phone || '+221 77 000 00 00'}</li>
                     <li><i className="fa-solid fa-envelope" style={{ color: '#dfba5c' }} /> {config.email || 'contact@byafrica.com'}</li>
                     <li>
-                      <a href="#" onClick={(e) => { e.preventDefault(); setActivePage('contact'); window.scrollTo({ top: 0, behavior: 'smooth' }); }} style={{ color: '#dfba5c', fontWeight: 600 }}>
+                      <a href="#" onClick={(e) => { e.preventDefault(); setActivePage('apropos'); setTimeout(() => { const el = document.getElementById('contact-sav'); if (el) el.scrollIntoView({ behavior: 'smooth' }); }, 100); }} style={{ color: '#dfba5c', fontWeight: 600 }}>
                         <i className="fa-solid fa-headset" style={{ color: '#dfba5c' }} /> Réclamations & SAV
                       </a>
                     </li>
