@@ -2873,6 +2873,24 @@ textarea.form-input {
   display: none;
 }
 
+.admin-mobile-topbar {
+  display: none;
+}
+
+@media (max-width: 992px) {
+  .admin-mobile-topbar {
+    display: flex !important;
+    justify-content: space-between;
+    align-items: center;
+    padding: 12px 14px;
+    background: #111111;
+    color: #ffffff;
+    border-radius: 10px;
+    margin-bottom: 14px;
+    border: 1px solid rgba(223, 186, 92, 0.35);
+  }
+}
+
 .admin-mobile-chips-nav {
   display: none;
 }

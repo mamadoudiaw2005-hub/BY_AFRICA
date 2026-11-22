@@ -996,6 +996,24 @@ export default function ByAfrikaPage() {
               <a href="#" onClick={(e) => { e.preventDefault(); if (!user) setAuthModalOpen(true); else if (isUserAdmin) setActivePage('admin'); else setActivePage('compte'); setMobileMenuOpen(false); }}>
                 <i className="fa-solid fa-user" /> {user ? user.name : 'Mon Compte / Connexion'}
               </a>
+              {user && (
+                <a
+                  href="#"
+                  onClick={(e) => { e.preventDefault(); handleLogout(); setMobileMenuOpen(false); }}
+                  style={{
+                    color: '#ef4444',
+                    fontWeight: 700,
+                    borderTop: '1px solid rgba(255,255,255,0.12)',
+                    marginTop: 8,
+                    paddingTop: 12,
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 8
+                  }}
+                >
+                  <i className="fa-solid fa-arrow-right-from-bracket" /> Déconnexion
+                </a>
+              )}
             </div>
           )}
 
@@ -1715,6 +1733,54 @@ export default function ByAfrikaPage() {
 
             {/* Contenu Principal Admin */}
             <main className="admin-main">
+              {/* Topbar Mobile Admin (Visible uniquement sur téléphone) */}
+              <div className="admin-mobile-topbar">
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <span style={{ color: '#dfba5c', fontWeight: 800, fontSize: '0.85rem' }}>BY_AFRIKA</span>
+                  <span style={{ fontSize: '0.72rem', background: '#222', padding: '2px 6px', borderRadius: 4, color: '#aaa' }}>Admin</span>
+                </div>
+                <div style={{ display: 'flex', gap: 8 }}>
+                  <button
+                    type="button"
+                    onClick={() => setActivePage('accueil')}
+                    style={{
+                      background: 'rgba(255,255,255,0.08)',
+                      border: '1px solid rgba(255,255,255,0.2)',
+                      color: '#fff',
+                      padding: '5px 10px',
+                      borderRadius: '6px',
+                      fontSize: '0.78rem',
+                      fontWeight: 600,
+                      cursor: 'pointer',
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: 4
+                    }}
+                  >
+                    <i className="fa-solid fa-arrow-left" /> Boutique
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleLogout}
+                    style={{
+                      background: 'rgba(239, 68, 68, 0.15)',
+                      border: '1px solid #ef4444',
+                      color: '#ef4444',
+                      padding: '5px 10px',
+                      borderRadius: '6px',
+                      fontSize: '0.78rem',
+                      fontWeight: 700,
+                      cursor: 'pointer',
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: 4
+                    }}
+                  >
+                    <i className="fa-solid fa-arrow-right-from-bracket" /> Déconnexion
+                  </button>
+                </div>
+              </div>
+
               <div className="admin-desktop-topbar">
                 <div className="admin-topbar-info">
                   <span className="admin-topbar-badge"><i className="fa-solid fa-shield-halved" /> Administration</span>
@@ -1737,6 +1803,7 @@ export default function ByAfrikaPage() {
                 <button type="button" className={`admin-chip-btn ${adminTab === 'commandes' ? 'active' : ''}`} onClick={() => setAdminTab('commandes')}><i className="fa-solid fa-box" /> Commandes</button>
                 <button type="button" className={`admin-chip-btn ${adminTab === 'messages' ? 'active' : ''}`} onClick={() => setAdminTab('messages')}><i className="fa-solid fa-headset" /> Messages</button>
                 <button type="button" className={`admin-chip-btn ${adminTab === 'config' ? 'active' : ''}`} onClick={() => setAdminTab('config')}><i className="fa-solid fa-gear" /> Config</button>
+                <button type="button" className="admin-chip-btn" onClick={handleLogout} style={{ color: '#ef4444', borderColor: 'rgba(239,68,68,0.4)', background: 'rgba(239,68,68,0.06)' }}><i className="fa-solid fa-arrow-right-from-bracket" /> Déconnexion</button>
               </nav>
 
               {/* TAB : DASHBOARD */}
