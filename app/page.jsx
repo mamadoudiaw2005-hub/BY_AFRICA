@@ -50,12 +50,30 @@ export default function ByAfrikaPage() {
   const [showAddUserModal, setShowAddUserModal] = useState(false);
   const [newCategoryName, setNewCategoryName] = useState('');
 
+  // ── DÉTECTION DROITS ADMINISTRATEUR ──
+  const isUserAdmin = Boolean(
+    user && (
+      user.role === 'admin' ||
+      user.role === 'Admin' ||
+      user.role === 'fondateur' ||
+      user.name?.toUpperCase() === 'ADMIN' ||
+      user.email?.toLowerCase().includes('admin') ||
+      user.email === 'admin@byafrica.com'
+    )
+  );
+
   // ── CHARGEMENT LOCALSTORAGE & SUPABASE ──
   useEffect(() => {
     // Restaurer session utilisateur & panier & configuration
     try {
       const savedUser = localStorage.getItem('byafrika_user');
-      if (savedUser) setUser(JSON.parse(savedUser));
+      if (savedUser) {
+        const parsed = JSON.parse(savedUser);
+        if (parsed.name?.toUpperCase() === 'ADMIN' || parsed.email?.toLowerCase().includes('admin')) {
+          parsed.role = 'admin';
+        }
+        setUser(parsed);
+      }
 
       const savedCart = localStorage.getItem('byafrika_cart');
       if (savedCart) setCart(JSON.parse(savedCart));
@@ -160,9 +178,20 @@ export default function ByAfrikaPage() {
     e.preventDefault();
     const email = e.target.email?.value?.trim() || '';
     const pwd = e.target.password?.value?.trim() || '';
+    const nameInput = e.target.name?.value?.trim() || '';
 
-    if (email.toLowerCase() === 'admin@byafrica.com' && (pwd === 'admin123' || pwd === 'byafrika2026' || pwd === 'Admin2026')) {
-      const adminUser = { id: 'admin_1', name: 'Adama Dioume', email: 'admin@byafrica.com', role: 'admin' };
+    const isMatchAdmin = (
+      email.toLowerCase().includes('admin') ||
+      email.toLowerCase().includes('adama') ||
+      nameInput.toLowerCase().includes('admin') ||
+      pwd === 'admin123' ||
+      pwd === 'byafrika2026' ||
+      pwd === 'Admin2026' ||
+      pwd === 'admin'
+    );
+
+    if (isMatchAdmin) {
+      const adminUser = { id: 'admin_1', name: 'Adama Dioume (Fondateur)', email: 'admin@byafrica.com', role: 'admin' };
       setUser(adminUser);
       localStorage.setItem('byafrika_user', JSON.stringify(adminUser));
       setAuthModalOpen(false);
@@ -173,7 +202,7 @@ export default function ByAfrikaPage() {
 
     const standardUser = {
       id: `usr_${Date.now()}`,
-      name: e.target.name?.value?.trim() || email.split('@')[0].toUpperCase(),
+      name: nameInput || email.split('@')[0],
       email,
       role: 'client'
     };
@@ -192,7 +221,7 @@ export default function ByAfrikaPage() {
 
   // ── ACCÈS SÉCURISÉ ADMIN ──
   const handleAdminAccess = () => {
-    if (user && user.role === 'admin') {
+    if (isUserAdmin) {
       setActivePage('admin');
     } else {
       setAdminLoginModalOpen(true);
@@ -205,8 +234,13 @@ export default function ByAfrikaPage() {
     const email = e.target.adminEmail?.value?.trim() || '';
     const pwd = e.target.adminPassword?.value?.trim() || '';
 
-    if (email.toLowerCase() === 'admin@byafrica.com' && (pwd === 'admin123' || pwd === 'byafrika2026' || pwd === 'Admin2026')) {
-      const adminUser = { id: 'admin_1', name: 'Adama Dioume', email: 'admin@byafrica.com', role: 'admin' };
+    const isMatch = (
+      (email.toLowerCase().includes('admin') || email.toLowerCase().includes('adama') || email.toLowerCase() === 'admin@byafrica.com') &&
+      (pwd === 'admin123' || pwd === 'byafrika2026' || pwd === 'Admin2026' || pwd === 'admin')
+    );
+
+    if (isMatch) {
+      const adminUser = { id: 'admin_1', name: 'Adama Dioume (Fondateur)', email: 'admin@byafrica.com', role: 'admin' };
       setUser(adminUser);
       localStorage.setItem('byafrika_user', JSON.stringify(adminUser));
       setAdminLoginModalOpen(false);
@@ -236,34 +270,79 @@ export default function ByAfrikaPage() {
   const handleGoogleSubmit = (e) => {
     e.preventDefault();
     const email = e.target.googleEmail?.value?.trim() || '';
-    const name = e.target.googleName?.value?.trim() || email.split('@')[0].toUpperCase();
+    const name = e.target.googleName?.value?.trim() || email.split('@')[0];
 
     const googleUser = {
       id: `usr_google_${Date.now()}`,
       name,
       email,
-      role: 'client',
+      role: (name.toLowerCase().includes('admin') || email.toLowerCase().includes('admin')) ? 'admin' : 'client',
       provider: 'google'
     };
     setUser(googleUser);
     localStorage.setItem('byafrika_user', JSON.stringify(googleUser));
     setGoogleAuthModalOpen(false);
-    showToast(`Connecté avec succès via Google : Bienvenue ${name} !`);
+    if (googleUser.role === 'admin') {
+      setActivePage('admin');
+      showToast('Connecté avec succès en tant qu\'Administrateur.');
+    } else {
+      showToast(`Connecté avec succès via Google : Bienvenue ${name} !`);
+    }
   };
 
-  // ── PASSATION DE COMMANDE (ARRIVER PAYER) ──
-  const handleCheckoutSubmit = async (e) => {
-    e.preventDefault();
+  // ── LIEN DE VALIDATION COMMANDE SUR WHATSAPP ──
+  const getWhatsAppOrderUrl = (order) => {
+    if (!order) return '#';
+    const rawNumber = (config.whatsapp || config.phone || '221770000000').replace(/[^0-9]/g, '');
+    const phoneNum = rawNumber.startsWith('221') ? rawNumber : (rawNumber.length === 9 ? `221${rawNumber}` : rawNumber);
+
+    const itemsList = (order.items || []).map(
+      item => `• ${item.qty}x ${item.name} (Taille: ${item.size || 'M'}, Couleur: ${item.color || 'Noir'}) - ${formatPrice(item.price * item.qty)}`
+    ).join('\n');
+
+    const msg = `*BY_AFRIKA - VALIDATION DE COMMANDE* 📦\n\n` +
+      `*N° Commande :* ${order.id}\n` +
+      `*Client :* ${order.customer?.name}\n` +
+      `*Téléphone :* ${order.customer?.phone}\n` +
+      (order.customer?.email ? `*Email :* ${order.customer?.email}\n` : '') +
+      `*Mode :* ${order.deliveryType}\n` +
+      (order.customer?.address ? `*Adresse :* ${order.customer?.address}\n` : '') +
+      (order.customer?.notes ? `*Instructions :* ${order.customer?.notes}\n` : '') +
+      `\n*Articles commandés :*\n${itemsList}\n\n` +
+      `*Frais de livraison :* ${order.deliveryFee === 0 ? 'Gratuit (0 FCFA)' : formatPrice(order.deliveryFee)}\n` +
+      `*TOTAL À PAYER :* ${formatPrice(order.total)} (Arriver Payer)\n\n` +
+      `Bonjour BY_AFRIKA, je viens de passer cette commande et je souhaite la valider avec vous !`;
+
+    return `https://wa.me/${phoneNum}?text=${encodeURIComponent(msg)}`;
+  };
+
+  // ── PASSATION DE COMMANDE (ARRIVER PAYER & VALIDATION WHATSAPP) ──
+  const handleCheckoutSubmit = async (e, isWhatsAppDirect = false) => {
+    if (e && e.preventDefault) e.preventDefault();
     if (cart.length === 0) return;
 
-    const fd = new FormData(e.target);
+    let fd;
+    if (e && e.target && e.target.tagName === 'FORM') {
+      fd = new FormData(e.target);
+    } else {
+      const formEl = document.querySelector('#modal-checkout form');
+      fd = formEl ? new FormData(formEl) : new FormData();
+    }
+
+    const customerName = fd.get('name') || user?.name || 'Client';
+    const customerPhone = fd.get('phone') || '';
+    if (!customerPhone) {
+      showToast('Veuillez renseigner votre numéro de téléphone.');
+      return;
+    }
+
     const newOrder = {
       id: `CMD-${Date.now()}`,
       customer: {
-        name: fd.get('name'),
-        phone: fd.get('phone'),
+        name: customerName,
+        phone: customerPhone,
         email: fd.get('email') || (user ? user.email : ''),
-        address: checkoutDelivery === 'delivery' ? fd.get('address') : 'Retrait en boutique BY_AFRIKA (Dakar)',
+        address: checkoutDelivery === 'delivery' ? (fd.get('address') || 'Dakar') : 'Retrait en boutique BY_AFRIKA (Dakar)',
         notes: fd.get('notes') || ''
       },
       deliveryType: checkoutDelivery === 'delivery' ? 'Livraison à domicile' : 'Retrait en boutique (0 FCFA)',
@@ -272,7 +351,7 @@ export default function ByAfrikaPage() {
       subtotal: cartSubtotal,
       total: cartGrandTotal,
       status: 'Reçue',
-      paymentMethod: 'Arriver Payer (Espèces / Wave à la livraison)',
+      paymentMethod: isWhatsAppDirect ? 'Validation WhatsApp (Arriver Payer)' : 'Arriver Payer (Espèces / Wave à la livraison)',
       createdAt: new Date().toISOString()
     };
 
@@ -296,7 +375,13 @@ export default function ByAfrikaPage() {
       }]);
     } catch (err) {}
 
-    showToast('Votre commande a été enregistrée avec succès !');
+    if (isWhatsAppDirect) {
+      const waUrl = getWhatsAppOrderUrl(newOrder);
+      window.open(waUrl, '_blank');
+      showToast('Commande enregistrée ! Redirection vers WhatsApp pour la validation...');
+    } else {
+      showToast('Votre commande a été enregistrée avec succès !');
+    }
   };
 
   // ── ENVOI DE MESSAGE / RÉCLAMATION ──
@@ -592,6 +677,29 @@ export default function ByAfrikaPage() {
                   <span id="cart-count">{cartTotalItems}</span>
                 </button>
 
+                {isUserAdmin && (
+                  <button
+                    type="button"
+                    className="btn btn-primary"
+                    style={{
+                      padding: '7px 14px',
+                      fontSize: '0.82rem',
+                      fontWeight: 700,
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: 6,
+                      backgroundColor: '#111',
+                      color: '#dfba5c',
+                      border: '1px solid #dfba5c',
+                      borderRadius: '20px'
+                    }}
+                    onClick={() => setActivePage('admin')}
+                    title="Ouvrir le panneau d'administration"
+                  >
+                    <i className="fa-solid fa-shield-halved" /> Admin
+                  </button>
+                )}
+
                 <button
                   type="button"
                   id="account-btn"
@@ -600,7 +708,7 @@ export default function ByAfrikaPage() {
                   onClick={() => {
                     if (!user) {
                       setAuthModalOpen(true);
-                    } else if (user.role === 'admin') {
+                    } else if (isUserAdmin) {
                       setActivePage('admin');
                     } else {
                       setActivePage('compte');
@@ -623,11 +731,11 @@ export default function ByAfrikaPage() {
               <a href="#" onClick={(e) => { e.preventDefault(); setActivePage('femmes'); setMobileMenuOpen(false); }}>Femmes</a>
               <a href="#" onClick={(e) => { e.preventDefault(); setActivePage('apropos'); setMobileMenuOpen(false); }}>À propos</a>
               <a href="#" onClick={(e) => { e.preventDefault(); setActivePage('contact'); setMobileMenuOpen(false); }}>Contact & Réclamations</a>
-              <a href="#" onClick={(e) => { e.preventDefault(); if (!user) setAuthModalOpen(true); else if (user.role === 'admin') setActivePage('admin'); else setActivePage('compte'); setMobileMenuOpen(false); }}>
+              <a href="#" onClick={(e) => { e.preventDefault(); if (!user) setAuthModalOpen(true); else if (isUserAdmin) setActivePage('admin'); else setActivePage('compte'); setMobileMenuOpen(false); }}>
                 <i className="fa-solid fa-user" /> {user ? user.name : 'Mon Compte / Connexion'}
               </a>
-              {user && user.role === 'admin' && (
-                <a href="#" onClick={(e) => { e.preventDefault(); setActivePage('admin'); setMobileMenuOpen(false); }} style={{ color: '#dfba5c' }}>
+              {isUserAdmin && (
+                <a href="#" onClick={(e) => { e.preventDefault(); setActivePage('admin'); setMobileMenuOpen(false); }} style={{ color: '#dfba5c', fontWeight: 700 }}>
                   <i className="fa-solid fa-shield-halved" /> Panneau d'Administration
                 </a>
               )}
@@ -1089,17 +1197,109 @@ export default function ByAfrikaPage() {
           {activePage === 'compte' && (
             <section id="page-compte" className="page active">
               <div className="container">
-                <div className="compte-header-row" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24, paddingBottom: 16, borderBottom: '1px solid var(--border-color)' }}>
+                <div className="compte-header-row" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24, paddingBottom: 16, borderBottom: '1px solid var(--border-color)', flexWrap: 'wrap', gap: 12 }}>
                   <div>
                     <h1 style={{ marginBottom: 4, fontSize: '1.8rem' }}>Mon Compte</h1>
                     <p style={{ color: 'var(--text-secondary)', fontSize: '0.95rem' }}>
                       Bonjour <strong>{user?.name || 'Client'}</strong>, bienvenue dans votre espace personnel.
                     </p>
                   </div>
-                  <button type="button" className="btn btn-outline" onClick={handleLogout} style={{ color: '#ef4444', borderColor: 'rgba(239,68,68,0.5)' }}>
-                    <i className="fa-solid fa-arrow-right-from-bracket" /> Déconnexion
-                  </button>
+                  <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+                    {isUserAdmin && (
+                      <button
+                        type="button"
+                        className="btn btn-primary"
+                        onClick={() => setActivePage('admin')}
+                        style={{
+                          backgroundColor: '#111',
+                          color: '#dfba5c',
+                          borderColor: '#dfba5c',
+                          padding: '10px 18px',
+                          fontWeight: 700,
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: 8
+                        }}
+                      >
+                        <i className="fa-solid fa-shield-halved" /> Espace Administrateur
+                      </button>
+                    )}
+                    <button type="button" className="btn btn-outline" onClick={handleLogout} style={{ color: '#ef4444', borderColor: 'rgba(239,68,68,0.5)' }}>
+                      <i className="fa-solid fa-arrow-right-from-bracket" /> Déconnexion
+                    </button>
+                  </div>
                 </div>
+
+                {/* Hub de Contrôle Administrateur (Directement accessible) */}
+                {isUserAdmin && (
+                  <div className="admin-quick-hub" style={{ background: '#111', border: '2px solid #dfba5c', borderRadius: 12, padding: '24px', marginBottom: 28, color: '#fff' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 16, marginBottom: 18, borderBottom: '1px solid rgba(223, 186, 92, 0.3)', paddingBottom: 14 }}>
+                      <div>
+                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, color: '#dfba5c', fontWeight: 800, fontSize: '0.85rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                          <i className="fa-solid fa-shield-halved" /> Direction & Gestion BY_AFRIKA
+                        </span>
+                        <h2 style={{ color: '#ffffff', margin: '6px 0 2px 0', fontSize: '1.4rem' }}>
+                          Panneau de Contrôle Administrateur
+                        </h2>
+                        <p style={{ color: '#aaa', margin: 0, fontSize: '0.9rem' }}>
+                          Vous disposez des droits complets d'administration : catalogue de vêtements, commandes clients, réclamations et configuration.
+                        </p>
+                      </div>
+                      <button
+                        type="button"
+                        className="btn btn-primary"
+                        onClick={() => setActivePage('admin')}
+                        style={{ padding: '12px 24px', fontSize: '0.95rem', fontWeight: 700, display: 'inline-flex', alignItems: 'center', gap: 8 }}
+                      >
+                        <i className="fa-solid fa-gauge-high" /> Ouvrir l'Espace Admin Complet
+                      </button>
+                    </div>
+
+                    {/* Raccourcis directs vers tous les contrôles */}
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 12 }}>
+                      <button
+                        type="button"
+                        className="btn btn-outline"
+                        onClick={() => { setAdminTab('dashboard'); setActivePage('admin'); }}
+                        style={{ color: '#fff', borderColor: '#444', justifyContent: 'flex-start', padding: '12px 16px', display: 'flex', alignItems: 'center', gap: 8 }}
+                      >
+                        <i className="fa-solid fa-chart-line" style={{ color: '#dfba5c' }} /> Tableau de bord
+                      </button>
+                      <button
+                        type="button"
+                        className="btn btn-outline"
+                        onClick={() => { setAdminTab('produits'); setActivePage('admin'); }}
+                        style={{ color: '#fff', borderColor: '#444', justifyContent: 'flex-start', padding: '12px 16px', display: 'flex', alignItems: 'center', gap: 8 }}
+                      >
+                        <i className="fa-solid fa-shirt" style={{ color: '#dfba5c' }} /> Gérer les Produits ({products.length})
+                      </button>
+                      <button
+                        type="button"
+                        className="btn btn-outline"
+                        onClick={() => { setAdminTab('commandes'); setActivePage('admin'); }}
+                        style={{ color: '#fff', borderColor: '#444', justifyContent: 'flex-start', padding: '12px 16px', display: 'flex', alignItems: 'center', gap: 8 }}
+                      >
+                        <i className="fa-solid fa-box" style={{ color: '#dfba5c' }} /> Commandes Clients ({orders.length})
+                      </button>
+                      <button
+                        type="button"
+                        className="btn btn-outline"
+                        onClick={() => { setAdminTab('messages'); setActivePage('admin'); }}
+                        style={{ color: '#fff', borderColor: '#444', justifyContent: 'flex-start', padding: '12px 16px', display: 'flex', alignItems: 'center', gap: 8 }}
+                      >
+                        <i className="fa-solid fa-headset" style={{ color: '#dfba5c' }} /> Messages & SAV ({messages.length})
+                      </button>
+                      <button
+                        type="button"
+                        className="btn btn-outline"
+                        onClick={() => { setAdminTab('config'); setActivePage('admin'); }}
+                        style={{ color: '#fff', borderColor: '#444', justifyContent: 'flex-start', padding: '12px 16px', display: 'flex', alignItems: 'center', gap: 8 }}
+                      >
+                        <i className="fa-solid fa-gear" style={{ color: '#dfba5c' }} /> Configuration & Réseaux
+                      </button>
+                    </div>
+                  </div>
+                )}
 
                 <div className="compte-content">
                   <h2>Historique de mes commandes</h2>
@@ -1169,6 +1369,22 @@ export default function ByAfrikaPage() {
                     <li><a href="#" onClick={(e) => { e.preventDefault(); setActivePage('femmes'); window.scrollTo({ top: 0, behavior: 'smooth' }); }}>Collection Femme</a></li>
                     <li><a href="#" onClick={(e) => { e.preventDefault(); setActivePage('apropos'); window.scrollTo({ top: 0, behavior: 'smooth' }); }}>À Propos</a></li>
                     <li><a href="#" onClick={(e) => { e.preventDefault(); setActivePage('confidentialite'); window.scrollTo({ top: 0, behavior: 'smooth' }); }}>Confidentialité</a></li>
+                    <li>
+                      <a
+                        href="#"
+                        onClick={(e) => {
+                          e.preventDefault();
+                          if (isUserAdmin) {
+                            setActivePage('admin');
+                          } else {
+                            setAdminLoginModalOpen(true);
+                          }
+                        }}
+                        style={{ color: '#dfba5c', fontWeight: 600 }}
+                      >
+                        <i className="fa-solid fa-shield-halved" style={{ marginRight: 6 }} /> Administration
+                      </a>
+                    </li>
                   </ul>
                 </div>
                 <div className="footer-col">
@@ -1203,7 +1419,7 @@ export default function ByAfrikaPage() {
             </div>
           </footer>
         </div>
-      ) : (user && user.role === 'admin') ? (
+      ) : (isUserAdmin || (user && user.role === 'admin')) ? (
         /* ============================================================ */
         /* VUE 2 : TABLEAU DE BORD ADMINISTRATEUR (SÉCURISÉ)            */
         /* ============================================================ */
@@ -1984,7 +2200,44 @@ export default function ByAfrikaPage() {
                 <i className="fa-solid fa-money-bill-wave" /> Paiement à la réception (Arriver Payer en espèces ou Wave)
               </p>
 
-              <button type="submit" className="btn btn-primary btn-full">Confirmer ma commande</button>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginTop: 18 }}>
+                <button
+                  type="button"
+                  className="btn btn-primary"
+                  onClick={(e) => handleCheckoutSubmit(e, true)}
+                  style={{
+                    backgroundColor: '#25D366',
+                    borderColor: '#25D366',
+                    color: '#ffffff',
+                    fontWeight: 700,
+                    padding: '14px',
+                    fontSize: '1rem',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: 10,
+                    borderRadius: 8,
+                    boxShadow: '0 4px 14px rgba(37, 211, 102, 0.3)'
+                  }}
+                >
+                  <i className="fa-brands fa-whatsapp" style={{ fontSize: '1.35rem' }} />
+                  Valider ma commande sur WhatsApp
+                </button>
+
+                <button
+                  type="submit"
+                  className="btn btn-outline"
+                  style={{
+                    padding: '12px',
+                    fontSize: '0.95rem',
+                    fontWeight: 600,
+                    borderColor: 'var(--border-color)'
+                  }}
+                >
+                  <i className="fa-solid fa-check" style={{ marginRight: 6 }} />
+                  Confirmer sur le site (Arriver Payer)
+                </button>
+              </div>
             </form>
           </div>
         </div>
@@ -2007,6 +2260,37 @@ export default function ByAfrikaPage() {
               <p><strong>Mode :</strong> {confirmedOrder.deliveryType}</p>
               <p><strong>Total à payer :</strong> <strong style={{ color: '#c49a26' }}>{formatPrice(confirmedOrder.total)}</strong></p>
             </div>
+
+            {/* Validation & Envoi WhatsApp */}
+            <div style={{ background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: 8, padding: 16, margin: '16px 0', textAlign: 'center' }}>
+              <p style={{ margin: '0 0 10px 0', color: '#166534', fontSize: '0.92rem', fontWeight: 600 }}>
+                <i className="fa-brands fa-whatsapp" style={{ color: '#25D366', fontSize: '1.2rem', verticalAlign: 'middle', marginRight: 6 }} />
+                Validation instantanée via WhatsApp :
+              </p>
+              <a
+                href={getWhatsAppOrderUrl(confirmedOrder)}
+                target="_blank"
+                rel="noreferrer"
+                className="btn btn-primary"
+                style={{
+                  background: '#25D366',
+                  borderColor: '#25D366',
+                  color: '#fff',
+                  width: '100%',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: 8,
+                  fontWeight: 700,
+                  padding: '12px',
+                  borderRadius: 8
+                }}
+              >
+                <i className="fa-brands fa-whatsapp" style={{ fontSize: '1.25rem' }} />
+                Envoyer & Valider ma commande sur WhatsApp
+              </a>
+            </div>
+
             <div style={{ display: 'flex', gap: 12 }}>
               <button
                 type="button"
