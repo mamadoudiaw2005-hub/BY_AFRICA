@@ -150,7 +150,7 @@ export default function ByAfrikaPage() {
     const pwd = e.target.password?.value?.trim() || '';
 
     if (email.toLowerCase() === 'admin@byafrica.com' && (pwd === 'admin123' || pwd === 'byafrika2026' || pwd === 'Admin2026')) {
-      const adminUser = { id: 'admin_1', name: 'Direction BY_AFRIKA', email: 'admin@byafrica.com', role: 'admin' };
+      const adminUser = { id: 'admin_1', name: 'Adama Dioume', email: 'admin@byafrica.com', role: 'admin' };
       setUser(adminUser);
       localStorage.setItem('byafrika_user', JSON.stringify(adminUser));
       setAuthModalOpen(false);
@@ -194,7 +194,7 @@ export default function ByAfrikaPage() {
     const pwd = e.target.adminPassword?.value?.trim() || '';
 
     if (email.toLowerCase() === 'admin@byafrica.com' && (pwd === 'admin123' || pwd === 'byafrika2026' || pwd === 'Admin2026')) {
-      const adminUser = { id: 'admin_1', name: 'Direction BY_AFRIKA', email: 'admin@byafrica.com', role: 'admin' };
+      const adminUser = { id: 'admin_1', name: 'Adama Dioume', email: 'admin@byafrica.com', role: 'admin' };
       setUser(adminUser);
       localStorage.setItem('byafrika_user', JSON.stringify(adminUser));
       setAdminLoginModalOpen(false);
@@ -848,15 +848,12 @@ export default function ByAfrikaPage() {
                   </div>
 
                   <div className="apropos-section">
-                    <h2><i className="fa-solid fa-user-tie" /> Le Fondateur & La Vision</h2>
+                    <h2><i className="fa-solid fa-user-tie" /> Le Fondateur</h2>
                     <p>
-                      Originaire de Dakar, Sénégal. Passionné de mode et animé par un profond amour pour l'Afrique,
-                      le fondateur a créé BY_AFRIKA pour donner une voix vestimentaire et stylée à la jeunesse africaine.
+                      <strong>Adama Dioume</strong>, originaire de Dakar, Sénégal. Passionné de mode et animé par un profond amour pour l'Afrique, Adama a créé BY_AFRIKA pour donner une voix vestimentaire et stylée à la jeunesse africaine.
                     </p>
                     <p>
-                      Son ambition : faire de BY_AFRIKA une référence panafricaine dans la mode contemporaine, en partant de Dakar pour
-                      conquérir le continent et au-delà. Chaque collection est pensée pour inspirer confiance, fierté et
-                      élégance.
+                      Son ambition : faire de BY_AFRIKA une référence panafricaine dans la mode contemporaine, en partant de Dakar pour conquérir le continent et au-delà. Chaque collection est pensée pour inspirer confiance, fierté et élégance.
                     </p>
                   </div>
                 </div>
@@ -1154,7 +1151,7 @@ export default function ByAfrikaPage() {
               <div className="admin-desktop-topbar">
                 <div className="admin-topbar-info">
                   <span className="admin-topbar-badge"><i className="fa-solid fa-shield-halved" /> Administration</span>
-                  <span className="admin-topbar-user">Connecté : <strong>Direction BY_AFRIKA</strong></span>
+                  <span className="admin-topbar-user">Connecté : <strong>Adama Dioume (Fondateur)</strong></span>
                 </div>
                 <div className="admin-topbar-actions">
                   <button type="button" className="btn btn-outline" onClick={() => setActivePage('accueil')}>

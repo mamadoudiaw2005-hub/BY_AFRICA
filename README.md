@@ -2,7 +2,7 @@
 
 > **"Portez vos origines avec confiance"**  
 > Marque de prêt-à-porter moderne pour homme & femme, célébrant l'élégance et la fierté africaine.  
-> Créée à Dakar, Sénégal.
+> Fondée par **Adama Dioume** à Dakar, Sénégal.
 
 ---
 
