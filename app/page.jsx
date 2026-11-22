@@ -37,6 +37,10 @@ export default function ByAfrikaPage() {
   const [authTab, setAuthTab] = useState('login'); // 'login' | 'register'
   const [googleAuthModalOpen, setGoogleAuthModalOpen] = useState(false);
   const [adminLoginModalOpen, setAdminLoginModalOpen] = useState(false);
+  const [forgotModalOpen, setForgotModalOpen] = useState(false);
+  const [forgotEmail, setForgotEmail] = useState('');
+  const [showLoginPassword, setShowLoginPassword] = useState(false);
+  const [showRegisterPassword, setShowRegisterPassword] = useState(false);
 
   const [adminTab, setAdminTab] = useState('dashboard'); // dashboard, produits, commandes, messages, roles, config
   const [adminSubTab, setAdminSubTab] = useState('messages'); // messages | roles
@@ -249,6 +253,25 @@ export default function ByAfrikaPage() {
     } else {
       showToast('Identifiants administrateur incorrects.');
     }
+  };
+
+  // ── MOT DE PASSE OUBLIÉ ──
+  const handleForgotPasswordSubmit = async (e) => {
+    e.preventDefault();
+    const email = e.target.forgotEmail?.value?.trim() || forgotEmail.trim();
+    if (!email) {
+      showToast('Veuillez renseigner votre adresse e-mail.', true);
+      return;
+    }
+
+    try {
+      await supabase.auth.resetPasswordForEmail(email, {
+        redirectTo: typeof window !== 'undefined' ? window.location.origin : undefined
+      });
+    } catch (err) {}
+
+    showToast(`Un e-mail de réinitialisation a été envoyé à ${email}.`);
+    setForgotModalOpen(false);
   };
 
   // ── AUTHENTIFICATION GOOGLE ──
@@ -1945,7 +1968,7 @@ export default function ByAfrikaPage() {
       {/* ============================================================ */}
 
       {/* 1. Modal Overlay Sombre */}
-      {(productModal || checkoutOpen || authModalOpen || googleAuthModalOpen || adminLoginModalOpen || confirmedOrder || showProductFormModal || showAddUserModal) && (
+      {(productModal || checkoutOpen || authModalOpen || googleAuthModalOpen || adminLoginModalOpen || forgotModalOpen || confirmedOrder || showProductFormModal || showAddUserModal) && (
         <div
           id="modal-overlay"
           className="modal-overlay"
@@ -1956,6 +1979,7 @@ export default function ByAfrikaPage() {
             setAuthModalOpen(false);
             setGoogleAuthModalOpen(false);
             setAdminLoginModalOpen(false);
+            setForgotModalOpen(false);
             setConfirmedOrder(null);
             setShowProductFormModal(false);
             setShowAddUserModal(false);
@@ -2341,12 +2365,51 @@ export default function ByAfrikaPage() {
               <form className="auth-form-stack" onSubmit={handleAuthSubmit}>
                 <div className="auth-field">
                   <label className="auth-label">Adresse e-mail</label>
-                  <input type="email" name="email" className="auth-input" placeholder="exemple@email.com" required />
+                  <input
+                    type="email"
+                    name="email"
+                    className="auth-input"
+                    placeholder="exemple@email.com"
+                    defaultValue={forgotEmail}
+                    onChange={(e) => setForgotEmail(e.target.value)}
+                    required
+                  />
                 </div>
                 <div className="auth-field">
                   <label className="auth-label">Mot de passe</label>
-                  <input type="password" name="password" className="auth-input" placeholder="••••••••" required />
+                  <div className="auth-password-wrapper">
+                    <input
+                      type={showLoginPassword ? 'text' : 'password'}
+                      name="password"
+                      className="auth-input"
+                      placeholder="••••••••"
+                      required
+                    />
+                    <button
+                      type="button"
+                      className="btn-toggle-password"
+                      onClick={() => setShowLoginPassword(prev => !prev)}
+                      aria-label="Afficher ou masquer le mot de passe"
+                    >
+                      <i className={showLoginPassword ? 'fa-regular fa-eye-slash' : 'fa-regular fa-eye'} />
+                    </button>
+                  </div>
                 </div>
+
+                <div className="auth-forgot-row">
+                  <a
+                    href="#"
+                    className="auth-forgot-link"
+                    onClick={(e) => {
+                      e.preventDefault();
+                      setAuthModalOpen(false);
+                      setForgotModalOpen(true);
+                    }}
+                  >
+                    Mot de passe oublié ?
+                  </a>
+                </div>
+
                 <button type="submit" className="btn-auth-submit">Se connecter</button>
 
                 <div className="auth-divider">
@@ -2375,7 +2438,23 @@ export default function ByAfrikaPage() {
                 </div>
                 <div className="auth-field">
                   <label className="auth-label">Mot de passe</label>
-                  <input type="password" name="password" className="auth-input" placeholder="••••••••" required />
+                  <div className="auth-password-wrapper">
+                    <input
+                      type={showRegisterPassword ? 'text' : 'password'}
+                      name="password"
+                      className="auth-input"
+                      placeholder="Choisir un mot de passe"
+                      required
+                    />
+                    <button
+                      type="button"
+                      className="btn-toggle-password"
+                      onClick={() => setShowRegisterPassword(prev => !prev)}
+                      aria-label="Afficher ou masquer le mot de passe"
+                    >
+                      <i className={showRegisterPassword ? 'fa-regular fa-eye-slash' : 'fa-regular fa-eye'} />
+                    </button>
+                  </div>
                 </div>
                 <button type="submit" className="btn-auth-submit">Créer mon compte</button>
 
@@ -2458,6 +2537,86 @@ export default function ByAfrikaPage() {
               <button type="submit" className="btn-auth-submit" style={{ backgroundColor: '#111', color: '#dfba5c', border: '1px solid #dfba5c' }}>
                 <i className="fa-solid fa-lock" style={{ marginRight: 6 }} /> Déverrouiller l'Administration
               </button>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* 6d. Modal Mot de Passe Oublié */}
+      {forgotModalOpen && (
+        <div id="modal-forgot-password" className="modal auth-modal-container" style={{ display: 'block' }}>
+          <div className="auth-modal-card" style={{ maxWidth: 440 }}>
+            <button type="button" className="auth-modal-close-btn modal-close" onClick={() => setForgotModalOpen(false)}>
+              <i className="fa-solid fa-xmark" />
+            </button>
+            <div style={{ textAlign: 'center', marginBottom: 20 }}>
+              <div style={{ width: 54, height: 54, borderRadius: '50%', background: 'rgba(223, 186, 92, 0.15)', color: 'var(--gold-accent)', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.5rem', marginBottom: 12 }}>
+                <i className="fa-solid fa-key" />
+              </div>
+              <h3 style={{ fontSize: '1.3rem', fontWeight: 800, margin: '0 0 6px 0' }}>Mot de passe oublié ?</h3>
+              <p style={{ fontSize: '0.88rem', color: '#6b7280', margin: 0 }}>
+                Entrez votre adresse email. Nous vous enverrons les instructions de réinitialisation, ou recevez une assistance immédiate via WhatsApp.
+              </p>
+            </div>
+            <form className="auth-form-stack" onSubmit={handleForgotPasswordSubmit}>
+              <div className="auth-field">
+                <label className="auth-label">Votre adresse email de compte</label>
+                <input
+                  type="email"
+                  name="forgotEmail"
+                  className="auth-input"
+                  placeholder="exemple@email.com"
+                  defaultValue={forgotEmail}
+                  onChange={(e) => setForgotEmail(e.target.value)}
+                  required
+                  autoFocus
+                />
+              </div>
+
+              <button type="submit" className="btn-auth-submit">
+                <i className="fa-solid fa-paper-plane" style={{ marginRight: 6 }} /> Envoyer le lien de réinitialisation
+              </button>
+
+              <div className="auth-divider">
+                <span>OU ASSISTANCE DIRECTE</span>
+              </div>
+
+              <a
+                href={`https://wa.me/${(config.whatsapp || config.phone || '221770000000').replace(/[^0-9]/g, '')}?text=${encodeURIComponent(`Bonjour BY_AFRIKA, j'ai oublié mon mot de passe pour mon compte (${forgotEmail || 'client'}). Pouvez-vous m'aider à le réinitialiser ?`)}`}
+                target="_blank"
+                rel="noreferrer"
+                className="btn btn-primary"
+                style={{
+                  backgroundColor: '#25D366',
+                  borderColor: '#25D366',
+                  color: '#fff',
+                  width: '100%',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: 8,
+                  fontWeight: 700,
+                  padding: '12px',
+                  borderRadius: 8
+                }}
+              >
+                <i className="fa-brands fa-whatsapp" style={{ fontSize: '1.2rem' }} />
+                Assistance immédiate via WhatsApp
+              </a>
+
+              <div style={{ textAlign: 'center', marginTop: 14 }}>
+                <a
+                  href="#"
+                  onClick={(e) => {
+                    e.preventDefault();
+                    setForgotModalOpen(false);
+                    setAuthModalOpen(true);
+                  }}
+                  style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', textDecoration: 'underline' }}
+                >
+                  <i className="fa-solid fa-arrow-left" style={{ marginRight: 4 }} /> Retour à la connexion
+                </a>
+              </div>
             </form>
           </div>
         </div>
