@@ -1032,14 +1032,28 @@ export default function ByAfrikaPage() {
                     </p>
                   </div>
 
-                  <div className="apropos-section">
+                  <div className="apropos-section founder-section">
                     <h2><i className="fa-solid fa-user-tie" /> Le Fondateur</h2>
-                    <p>
-                      <strong>Adama Dioume</strong>, originaire de Dakar, Sénégal. Passionné de mode et animé par un profond amour pour l'Afrique, Adama a créé BY_AFRIKA pour donner une voix vestimentaire et stylée à la jeunesse africaine.
-                    </p>
-                    <p>
-                      Son ambition : faire de BY_AFRIKA une référence panafricaine dans la mode contemporaine, en partant de Dakar pour conquérir le continent et au-delà. Chaque collection est pensée pour inspirer confiance, fierté et élégance.
-                    </p>
+                    <div className="founder-card-layout" style={{ display: 'flex', flexDirection: 'column', gap: 20, alignItems: 'center', marginTop: 16 }}>
+                      <div className="founder-image-wrapper" style={{ maxWidth: 360, width: '100%', borderRadius: 16, overflow: 'hidden', boxShadow: '0 12px 30px rgba(0,0,0,0.15)', border: '2px solid rgba(223, 186, 92, 0.4)' }}>
+                        <img
+                          src="/fondateur-adama-dioume.jpg"
+                          alt="Adama Dioume - Fondateur de BY_AFRIKA"
+                          style={{ width: '100%', height: 'auto', display: 'block', objectFit: 'cover' }}
+                        />
+                        <div style={{ background: '#111', color: '#dfba5c', padding: '10px 16px', textAlign: 'center', fontSize: '0.88rem', fontWeight: 700, letterSpacing: '0.05em' }}>
+                          ADAMA DIOUME • FONDATEUR DE BY_AFRIKA
+                        </div>
+                      </div>
+                      <div className="founder-text-content" style={{ width: '100%' }}>
+                        <p>
+                          <strong>Adama Dioume</strong>, originaire de Dakar, Sénégal. Passionné de mode et animé par un profond amour pour l'Afrique, Adama a créé BY_AFRIKA pour donner une voix vestimentaire et stylée à la jeunesse africaine.
+                        </p>
+                        <p>
+                          Son ambition : faire de BY_AFRIKA une référence panafricaine dans la mode contemporaine, en partant de Dakar pour conquérir le continent et au-delà. Chaque collection est pensée pour inspirer confiance, fierté et élégance.
+                        </p>
+                      </div>
+                    </div>
                   </div>
 
                   <div className="apropos-section">
