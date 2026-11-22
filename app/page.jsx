@@ -144,7 +144,7 @@ export default function ByAfrikaPage() {
             role: resolvedUser.role,
             auth_provider: resolvedUser.provider
           });
-        } catch (e) {}
+        } catch (e) { }
 
         // Nettoyer les hash et paramètres OAuth dans l'URL (#access_token ou ?code=)
         if (typeof window !== 'undefined' && (window.location.hash || window.location.search.includes('code='))) {
@@ -167,7 +167,7 @@ export default function ByAfrikaPage() {
   useEffect(() => {
     try {
       localStorage.setItem('byafrika_cart', JSON.stringify(cart));
-    } catch (e) {}
+    } catch (e) { }
   }, [cart]);
 
   // Toast
@@ -263,10 +263,9 @@ export default function ByAfrikaPage() {
           if (error.message?.toLowerCase().includes('email not confirmed')) {
             setAuthNotice({
               type: 'warning',
-              email,
-              text: `Votre compte n'a pas encore été validé. Un e-mail de confirmation a été envoyé à ${email}. Veuillez cliquer sur le lien reçu pour l'activer avant de vous connecter.`
+              text: 'Votre compte n\'a pas encore été validé. Veuillez ouvrir le lien de confirmation envoyé à votre adresse e-mail pour l\'activer.'
             });
-            showToast('Validation requise : consultez vos e-mails.', true);
+            showToast('Validation requise : consultez votre boîte e-mail.', true);
           } else if (error.message?.toLowerCase().includes('invalid login credentials')) {
             setAuthNotice({
               type: 'error',
@@ -373,7 +372,7 @@ export default function ByAfrikaPage() {
               role: 'client',
               auth_provider: 'email'
             });
-          } catch (e) {}
+          } catch (e) { }
 
           if (data.session) {
             // Le compte est immédiatement validé
@@ -389,13 +388,12 @@ export default function ByAfrikaPage() {
             setAuthModalOpen(false);
             showToast(`Félicitations ${nameInput} ! Votre compte a été validé et créé avec succès.`);
           } else {
-            // Validation par e-mail obligatoire requise par Supabase
+            // Validation par e-mail requise par Supabase
             setAuthNotice({
               type: 'success',
-              email,
-              text: `🎉 Votre compte a été pré-créé avec succès ! Un e-mail de validation a été envoyé à ${email}. Vous devez obligatoirement cliquer sur le lien d'activation reçu dans votre boîte de réception pour valider votre compte avant de pouvoir vous connecter.`
+              text: `🎉 Votre compte a été pré-créé avec succès ! Un e-mail de validation a été envoyé à ${email}. Cliquez sur le lien reçu dans votre boîte de réception pour valider et activer votre compte.`
             });
-            showToast(`E-mail de validation envoyé à ${email}. Consultez votre boîte de réception.`);
+            showToast(`E-mail de validation envoyé à ${email}.`);
             setAuthTab('login');
           }
         }
@@ -411,40 +409,10 @@ export default function ByAfrikaPage() {
     }
   };
 
-  // ── RENVOI DE L'EMAIL DE VALIDATION DE COMPTE ──
-  const handleResendValidationEmail = async (targetEmail) => {
-    const emailToSend = targetEmail || authNotice?.email || forgotEmail;
-    if (!emailToSend) {
-      showToast('Veuillez renseigner votre adresse e-mail.', true);
-      return;
-    }
-    setAuthLoading(true);
-    try {
-      const { error } = await supabase.auth.resend({
-        type: 'signup',
-        email: emailToSend,
-        options: {
-          emailRedirectTo: typeof window !== 'undefined' ? window.location.origin : undefined
-        }
-      });
-      if (error) throw error;
-      showToast(`E-mail de validation renvoyé avec succès à ${emailToSend} !`);
-      setAuthNotice({
-        type: 'success',
-        email: emailToSend,
-        text: `Un nouvel e-mail de validation a été envoyé à ${emailToSend}. Pensez à vérifier vos courriers indésirables (spams) si vous ne le trouvez pas.`
-      });
-    } catch (err) {
-      showToast(err.message || 'Erreur lors du renvoi de l\'e-mail.', true);
-    } finally {
-      setAuthLoading(false);
-    }
-  };
-
   const handleLogout = async () => {
     try {
       await supabase.auth.signOut();
-    } catch (e) {}
+    } catch (e) { }
     setUser(null);
     localStorage.removeItem('byafrika_user');
     if (activePage === 'admin' || activePage === 'compte') setActivePage('accueil');
@@ -496,7 +464,7 @@ export default function ByAfrikaPage() {
       await supabase.auth.resetPasswordForEmail(email, {
         redirectTo: typeof window !== 'undefined' ? window.location.origin : undefined
       });
-    } catch (err) {}
+    } catch (err) { }
 
     showToast(`Un e-mail de réinitialisation a été envoyé à ${email}.`);
     setForgotModalOpen(false);
@@ -544,7 +512,7 @@ export default function ByAfrikaPage() {
         role: googleUser.role,
         auth_provider: 'google'
       });
-    } catch (e) {}
+    } catch (e) { }
     setGoogleAuthModalOpen(false);
     if (googleUser.role === 'admin') {
       setActivePage('admin');
@@ -637,7 +605,7 @@ export default function ByAfrikaPage() {
         status: newOrder.status,
         items: newOrder.items
       }]);
-    } catch (err) {}
+    } catch (err) { }
 
     if (isWhatsAppDirect) {
       const waUrl = getWhatsAppOrderUrl(newOrder);
@@ -669,7 +637,7 @@ export default function ByAfrikaPage() {
 
     try {
       await supabase.from('messages').insert([msg]);
-    } catch (e) {}
+    } catch (e) { }
 
     showToast('Votre message a bien été envoyé. Notre service client vous répondra rapidement !');
   };
@@ -702,7 +670,7 @@ export default function ByAfrikaPage() {
 
     try {
       await supabase.from('products').upsert([prodData]);
-    } catch (e) {}
+    } catch (e) { }
 
     setShowProductFormModal(false);
     setEditingProduct(null);
@@ -713,7 +681,7 @@ export default function ByAfrikaPage() {
       setProducts(prev => prev.filter(p => p.id !== id));
       try {
         await supabase.from('products').delete().eq('id', id);
-      } catch (e) {}
+      } catch (e) { }
       showToast('Produit retiré du catalogue.');
     }
   };
@@ -731,7 +699,7 @@ export default function ByAfrikaPage() {
     setConfig(updated);
     try {
       localStorage.setItem('byafrika_config', JSON.stringify(updated));
-    } catch (err) {}
+    } catch (err) { }
     setNewCategoryName('');
     showToast(`Catégorie "${cat}" ajoutée.`);
   };
@@ -741,7 +709,7 @@ export default function ByAfrikaPage() {
     setConfig(updated);
     try {
       localStorage.setItem('byafrika_config', JSON.stringify(updated));
-    } catch (err) {}
+    } catch (err) { }
     showToast(`Catégorie "${cat}" supprimée.`);
   };
 
@@ -749,10 +717,10 @@ export default function ByAfrikaPage() {
     if (e && e.preventDefault) e.preventDefault();
     try {
       localStorage.setItem('byafrika_config', JSON.stringify(config));
-    } catch (err) {}
+    } catch (err) { }
     try {
       await supabase.from('config').upsert({ id: 'main', ...config });
-    } catch (err) {}
+    } catch (err) { }
     showToast('Configuration et réseaux sociaux enregistrés avec succès !');
   };
 
@@ -1880,7 +1848,7 @@ export default function ByAfrikaPage() {
                                     setOrders(prev => prev.map(item => item.id === o.id ? { ...item, status: val } : item));
                                     try {
                                       await supabase.from('orders').update({ status: val }).eq('id', o.id);
-                                    } catch (err) {}
+                                    } catch (err) { }
                                     showToast(`Commande ${o.id} passée à : ${val}`);
                                   }}
                                   className="form-input"
@@ -2620,41 +2588,20 @@ export default function ByAfrikaPage() {
                 backgroundColor: authNotice.type === 'success' ? '#f0fdf4' : (authNotice.type === 'warning' ? '#fffbeb' : '#fef2f2'),
                 border: `1px solid ${authNotice.type === 'success' ? '#86efac' : (authNotice.type === 'warning' ? '#fde68a' : '#fecaca')}`,
                 color: authNotice.type === 'success' ? '#166534' : (authNotice.type === 'warning' ? '#92400e' : '#991b1b'),
-                padding: '14px 16px',
-                borderRadius: '12px',
+                padding: '12px 14px',
+                borderRadius: '10px',
                 marginBottom: '18px',
                 fontSize: '0.88rem',
-                lineHeight: '1.45'
+                lineHeight: '1.45',
+                display: 'flex',
+                alignItems: 'flex-start',
+                gap: '10px'
               }}>
-                <div style={{ display: 'flex', alignItems: 'flex-start', gap: '10px' }}>
-                  <i className={`fa-solid ${authNotice.type === 'success' ? 'fa-circle-check' : (authNotice.type === 'warning' ? 'fa-envelope-open-text' : 'fa-circle-exclamation')}`} style={{ marginTop: 2, fontSize: '1.15rem' }} />
-                  <div style={{ flex: 1 }}>{authNotice.text}</div>
-                  <button type="button" onClick={() => setAuthNotice(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'inherit', opacity: 0.6, padding: 0 }}>
-                    <i className="fa-solid fa-xmark" />
-                  </button>
-                </div>
-                {authNotice.email && (authNotice.type === 'warning' || authNotice.type === 'success') && (
-                  <div style={{ marginTop: 10, textAlign: 'right' }}>
-                    <button
-                      type="button"
-                      disabled={authLoading}
-                      onClick={() => handleResendValidationEmail(authNotice.email)}
-                      style={{
-                        background: 'transparent',
-                        border: '1px solid currentColor',
-                        borderRadius: 6,
-                        padding: '4px 10px',
-                        fontSize: '0.78rem',
-                        fontWeight: 600,
-                        color: 'inherit',
-                        cursor: 'pointer'
-                      }}
-                    >
-                      <i className="fa-solid fa-paper-plane" style={{ marginRight: 5 }} />
-                      Renvoyer l'e-mail de validation
-                    </button>
-                  </div>
-                )}
+                <i className={`fa-solid ${authNotice.type === 'success' ? 'fa-circle-check' : (authNotice.type === 'warning' ? 'fa-envelope-open-text' : 'fa-circle-exclamation')}`} style={{ marginTop: 2, fontSize: '1.1rem' }} />
+                <div style={{ flex: 1 }}>{authNotice.text}</div>
+                <button type="button" onClick={() => setAuthNotice(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'inherit', opacity: 0.6 }}>
+                  <i className="fa-solid fa-xmark" />
+                </button>
               </div>
             )}
 
