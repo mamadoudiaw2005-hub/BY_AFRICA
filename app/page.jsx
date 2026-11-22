@@ -91,6 +91,9 @@ export default function ByAfrikaPage() {
       const savedOrders = localStorage.getItem('byafrika_orders');
       if (savedOrders) setOrders(JSON.parse(savedOrders));
 
+      const savedUsers = localStorage.getItem('byafrika_users');
+      if (savedUsers) setUsersList(JSON.parse(savedUsers));
+
       const savedConfig = localStorage.getItem('byafrika_config');
       if (savedConfig) setConfig(JSON.parse(savedConfig));
 
@@ -108,6 +111,9 @@ export default function ByAfrikaPage() {
 
         const { data: dbOrders } = await supabase.from('orders').select('*').order('created_at', { ascending: false });
         if (dbOrders && dbOrders.length > 0) setOrders(dbOrders);
+
+        const { data: dbUsers } = await supabase.from('users').select('*');
+        if (dbUsers && dbUsers.length > 0) setUsersList(dbUsers);
 
         const { data: dbMsgs } = await supabase.from('messages').select('*').order('created_at', { ascending: false });
         if (dbMsgs && dbMsgs.length > 0) setMessages(dbMsgs);
@@ -141,6 +147,10 @@ export default function ByAfrikaPage() {
           avatar: metadata.avatar_url || null
         };
         setUser(resolvedUser);
+        setUsersList(prev => {
+          const exists = prev.some(item => item.id === resolvedUser.id || item.email === resolvedUser.email);
+          return exists ? prev.map(item => (item.id === resolvedUser.id || item.email === resolvedUser.email) ? { ...item, ...resolvedUser } : item) : [...prev, resolvedUser];
+        });
         try {
           localStorage.setItem('byafrika_user', JSON.stringify(resolvedUser));
           await supabase.from('users').upsert({
@@ -181,6 +191,12 @@ export default function ByAfrikaPage() {
       localStorage.setItem('byafrika_orders', JSON.stringify(orders));
     } catch (e) { }
   }, [orders]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('byafrika_users', JSON.stringify(usersList));
+    } catch (e) { }
+  }, [usersList]);
 
   // Toast
   const showToast = (msg) => {
@@ -377,6 +393,15 @@ export default function ByAfrikaPage() {
             showToast(error.message || 'Erreur lors de la création du compte.', true);
           }
         } else if (data?.user) {
+          const createdClient = {
+            id: data.user.id,
+            name: nameInput,
+            email,
+            role: 'client',
+            auth_provider: 'email'
+          };
+          setUsersList(prev => [...prev.filter(item => item.email !== email), createdClient]);
+
           try {
             await supabase.from('users').upsert({
               id: data.user.id,
@@ -2000,41 +2025,166 @@ export default function ByAfrikaPage() {
               </nav>
 
               {/* TAB : DASHBOARD */}
-              {adminTab === 'dashboard' && (
-                <div className="admin-section active">
-                  <h1>Tableau de bord</h1>
-                  <div className="admin-stats">
-                    <div className="stat-card">
-                      <i className="fa-solid fa-box" />
-                      <div className="stat-info">
-                        <h3>{orders.length}</h3>
-                        <p>Commandes</p>
+              {adminTab === 'dashboard' && (() => {
+                const totalRevenue = orders.reduce((sum, o) => sum + (Number(o.total) || 0), 0);
+                const totalOrders = orders.length;
+                const ordersWithDelivery = orders.filter(o => {
+                  const dt = (o.deliveryType || '').toLowerCase();
+                  return dt.includes('livraison') || (Number(o.deliveryFee) > 0);
+                }).length;
+                const ordersWithoutDelivery = totalOrders - ordersWithDelivery;
+
+                // Nombre de clients inscrits sur le site
+                const registeredClientsCount = usersList.filter(u => {
+                  const r = (u.role || '').toLowerCase();
+                  return r === 'client' || (!r.includes('admin') && !r.includes('fondateur'));
+                }).length;
+
+                const deliveryPct = totalOrders > 0 ? Math.round((ordersWithDelivery / totalOrders) * 100) : 0;
+                const pickupPct = totalOrders > 0 ? (100 - deliveryPct) : 0;
+
+                return (
+                  <div className="admin-section active">
+                    <div style={{ marginBottom: 24 }}>
+                      <h1 style={{ margin: '0 0 6px 0', fontSize: '1.6rem', fontWeight: 800 }}>Tableau de bord</h1>
+                      <p style={{ margin: 0, color: 'var(--text-secondary)', fontSize: '0.9rem' }}>
+                        Suivi d'activité et statistiques en temps réel de la boutique <strong>BY_AFRIKA</strong>.
+                      </p>
+                    </div>
+
+                    {/* Grille des KPI Clés */}
+                    <div className="admin-stats" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 16, marginBottom: 32 }}>
+                      {/* 1. Chiffre d'Affaires */}
+                      <div className="stat-card" style={{ borderLeft: '4px solid #dfba5c' }}>
+                        <i className="fa-solid fa-coins" style={{ color: '#dfba5c', fontSize: '1.6rem' }} />
+                        <div className="stat-info">
+                          <h3 style={{ color: '#dfba5c', fontSize: '1.45rem', fontWeight: 800 }}>{formatPrice(totalRevenue)}</h3>
+                          <p style={{ fontWeight: 600 }}>Chiffre d'Affaires</p>
+                          <span style={{ fontSize: '0.75rem', color: '#888' }}>Ventes cumulées</span>
+                        </div>
+                      </div>
+
+                      {/* 2. Total Commandes */}
+                      <div className="stat-card" style={{ borderLeft: '4px solid #3b82f6' }}>
+                        <i className="fa-solid fa-box" style={{ color: '#3b82f6', fontSize: '1.6rem' }} />
+                        <div className="stat-info">
+                          <h3 style={{ fontSize: '1.45rem', fontWeight: 800 }}>{totalOrders}</h3>
+                          <p style={{ fontWeight: 600 }}>Total Commandes</p>
+                          <span style={{ fontSize: '0.75rem', color: '#888' }}>Toutes commandes</span>
+                        </div>
+                      </div>
+
+                      {/* 3. Commandes avec Livraison */}
+                      <div className="stat-card" style={{ borderLeft: '4px solid #10b981' }}>
+                        <i className="fa-solid fa-truck-fast" style={{ color: '#10b981', fontSize: '1.6rem' }} />
+                        <div className="stat-info">
+                          <h3 style={{ color: '#10b981', fontSize: '1.45rem', fontWeight: 800 }}>{ordersWithDelivery}</h3>
+                          <p style={{ fontWeight: 600 }}>Avec Livraison</p>
+                          <span style={{ fontSize: '0.75rem', color: '#888' }}>{deliveryPct}% du volume</span>
+                        </div>
+                      </div>
+
+                      {/* 4. Commandes sans Livraison (Retrait Boutique) */}
+                      <div className="stat-card" style={{ borderLeft: '4px solid #f59e0b' }}>
+                        <i className="fa-solid fa-store" style={{ color: '#f59e0b', fontSize: '1.6rem' }} />
+                        <div className="stat-info">
+                          <h3 style={{ color: '#f59e0b', fontSize: '1.45rem', fontWeight: 800 }}>{ordersWithoutDelivery}</h3>
+                          <p style={{ fontWeight: 600 }}>Sans Livraison</p>
+                          <span style={{ fontSize: '0.75rem', color: '#888' }}>Retrait au Showroom ({pickupPct}%)</span>
+                        </div>
+                      </div>
+
+                      {/* 5. Clients Inscrits sur le Site */}
+                      <div className="stat-card" style={{ borderLeft: '4px solid #8b5cf6' }}>
+                        <i className="fa-solid fa-users" style={{ color: '#8b5cf6', fontSize: '1.6rem' }} />
+                        <div className="stat-info">
+                          <h3 style={{ color: '#8b5cf6', fontSize: '1.45rem', fontWeight: 800 }}>{registeredClientsCount}</h3>
+                          <p style={{ fontWeight: 600 }}>Clients Inscrits</p>
+                          <span style={{ fontSize: '0.75rem', color: '#888' }}>Comptes créés sur le site</span>
+                        </div>
+                      </div>
+
+                      {/* 6. Articles en Vente */}
+                      <div className="stat-card" style={{ borderLeft: '4px solid #ec4899' }}>
+                        <i className="fa-solid fa-shirt" style={{ color: '#ec4899', fontSize: '1.6rem' }} />
+                        <div className="stat-info">
+                          <h3 style={{ fontSize: '1.45rem', fontWeight: 800 }}>{products.length}</h3>
+                          <p style={{ fontWeight: 600 }}>Articles au Catalogue</p>
+                          <span style={{ fontSize: '0.75rem', color: '#888' }}>Modèles en stock</span>
+                        </div>
                       </div>
                     </div>
-                    <div className="stat-card">
-                      <i className="fa-solid fa-coins" />
-                      <div className="stat-info">
-                        <h3>{formatPrice(orders.reduce((s, o) => s + (o.total || 0), 0))}</h3>
-                        <p>Chiffre d'Affaires</p>
+
+                    {/* Bloc d'Analyse des Livraisons & Performance */}
+                    <div style={{ background: '#ffffff', border: '1px solid var(--border-color)', borderRadius: 12, padding: 24, marginBottom: 28, boxShadow: '0 2px 8px rgba(0,0,0,0.04)' }}>
+                      <h2 style={{ fontSize: '1.15rem', fontWeight: 700, margin: '0 0 16px 0', display: 'flex', alignItems: 'center', gap: 8 }}>
+                        <i className="fa-solid fa-chart-pie" style={{ color: '#dfba5c' }} />
+                        Répartition des Modes de Livraison
+                      </h2>
+
+                      {/* Barre visuelle de répartition */}
+                      <div style={{ height: 12, borderRadius: 6, backgroundColor: '#e5e7eb', overflow: 'hidden', display: 'flex', marginBottom: 16 }}>
+                        <div style={{ width: `${deliveryPct}%`, backgroundColor: '#10b981', transition: 'width 0.4s' }} title={`Avec livraison: ${deliveryPct}%`} />
+                        <div style={{ width: `${pickupPct}%`, backgroundColor: '#f59e0b', transition: 'width 0.4s' }} title={`Sans livraison: ${pickupPct}%`} />
                       </div>
-                    </div>
-                    <div className="stat-card">
-                      <i className="fa-solid fa-shirt" />
-                      <div className="stat-info">
-                        <h3>{products.length}</h3>
-                        <p>Articles</p>
+
+                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 14 }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 16px', background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: 8 }}>
+                          <i className="fa-solid fa-truck-fast" style={{ color: '#10b981', fontSize: '1.4rem' }} />
+                          <div>
+                            <div style={{ fontWeight: 700, fontSize: '0.95rem', color: '#166534' }}>{ordersWithDelivery} commande(s) avec livraison</div>
+                            <div style={{ fontSize: '0.78rem', color: '#15803d' }}>{deliveryPct}% des commandes expédiées à domicile</div>
+                          </div>
+                        </div>
+
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 16px', background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 8 }}>
+                          <i className="fa-solid fa-store" style={{ color: '#f59e0b', fontSize: '1.4rem' }} />
+                          <div>
+                            <div style={{ fontWeight: 700, fontSize: '0.95rem', color: '#92400e' }}>{ordersWithoutDelivery} commande(s) sans livraison</div>
+                            <div style={{ fontSize: '0.78rem', color: '#b45309' }}>{pickupPct}% retirées directement au Showroom (0 FCFA)</div>
+                          </div>
+                        </div>
+
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 16px', background: '#faf5ff', border: '1px solid #e9d5ff', borderRadius: 8 }}>
+                          <i className="fa-solid fa-users" style={{ color: '#8b5cf6', fontSize: '1.4rem' }} />
+                          <div>
+                            <div style={{ fontWeight: 700, fontSize: '0.95rem', color: '#6b21a8' }}>{registeredClientsCount} client(s) inscrit(s)</div>
+                            <div style={{ fontSize: '0.78rem', color: '#7e22ce' }}>Membres enregistrés sur la boutique</div>
+                          </div>
+                        </div>
                       </div>
-                    </div>
-                    <div className="stat-card">
-                      <i className="fa-solid fa-headset" />
-                      <div className="stat-info">
-                        <h3>{messages.length}</h3>
-                        <p>Réclamations</p>
+
+                      {/* Raccourcis rapides d'administration */}
+                      <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginTop: 20, paddingTop: 16, borderTop: '1px solid #f0f0f0' }}>
+                        <button
+                          type="button"
+                          className="btn btn-primary"
+                          onClick={openAddProductModal}
+                          style={{ padding: '8px 16px', fontSize: '0.85rem', fontWeight: 700, display: 'inline-flex', alignItems: 'center', gap: 6 }}
+                        >
+                          <i className="fa-solid fa-plus-circle" /> Ajouter un Vêtement
+                        </button>
+                        <button
+                          type="button"
+                          className="btn btn-outline"
+                          onClick={() => setAdminTab('commandes')}
+                          style={{ padding: '8px 16px', fontSize: '0.85rem', fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: 6 }}
+                        >
+                          <i className="fa-solid fa-box" /> Consulter les {totalOrders} commandes
+                        </button>
+                        <button
+                          type="button"
+                          className="btn btn-outline"
+                          onClick={() => { setAdminTab('messages'); setAdminSubTab('roles'); }}
+                          style={{ padding: '8px 16px', fontSize: '0.85rem', fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: 6 }}
+                        >
+                          <i className="fa-solid fa-users-gear" /> Consulter les rôles & équipe
+                        </button>
                       </div>
                     </div>
                   </div>
-                </div>
-              )}
+                );
+              })()}
 
               {/* TAB : PRODUITS */}
               {adminTab === 'produits' && (
