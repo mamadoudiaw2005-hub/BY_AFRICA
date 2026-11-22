@@ -753,7 +753,6 @@ export default function ByAfrikaPage() {
               <a href="#" onClick={(e) => { e.preventDefault(); setActivePage('hommes'); setMobileMenuOpen(false); }}>Hommes</a>
               <a href="#" onClick={(e) => { e.preventDefault(); setActivePage('femmes'); setMobileMenuOpen(false); }}>Femmes</a>
               <a href="#" onClick={(e) => { e.preventDefault(); setActivePage('apropos'); setMobileMenuOpen(false); }}>À propos</a>
-              <a href="#" onClick={(e) => { e.preventDefault(); setActivePage('contact'); setMobileMenuOpen(false); }}>Contact & Réclamations</a>
               <a href="#" onClick={(e) => { e.preventDefault(); if (!user) setAuthModalOpen(true); else if (isUserAdmin) setActivePage('admin'); else setActivePage('compte'); setMobileMenuOpen(false); }}>
                 <i className="fa-solid fa-user" /> {user ? user.name : 'Mon Compte / Connexion'}
               </a>
