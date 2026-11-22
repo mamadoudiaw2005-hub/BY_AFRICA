@@ -149,11 +149,12 @@ export default function ByAfrikaPage() {
     const email = e.target.email?.value?.trim() || '';
     const pwd = e.target.password?.value?.trim() || '';
 
-    if (email === 'admin@byafrica.com' && (pwd === 'admin123' || pwd === 'byafrika2026')) {
+    if (email.toLowerCase() === 'admin@byafrica.com' && (pwd === 'admin123' || pwd === 'byafrika2026' || pwd === 'Admin2026')) {
       const adminUser = { id: 'admin_1', name: 'Direction BY_AFRIKA', email: 'admin@byafrica.com', role: 'admin' };
       setUser(adminUser);
       localStorage.setItem('byafrika_user', JSON.stringify(adminUser));
       setAuthModalOpen(false);
+      setActivePage('admin');
       showToast('Connecté avec succès en tant qu\'Administrateur.');
       return;
     }
@@ -548,27 +549,17 @@ export default function ByAfrikaPage() {
                   className="action-btn-pill"
                   aria-label="Mon compte"
                   onClick={() => {
-                    if (user) setActivePage('compte');
-                    else setAuthModalOpen(true);
+                    if (!user) {
+                      setAuthModalOpen(true);
+                    } else if (user.role === 'admin') {
+                      setActivePage('admin');
+                    } else {
+                      setActivePage('compte');
+                    }
                   }}
                 >
                   <i className="fa-solid fa-user" />
                   <span id="account-btn-label">{user ? user.name : 'Se connecter'}</span>
-                </button>
-
-                {/* Accès Admin Sécurisé */}
-                <button
-                  type="button"
-                  className="action-btn-circle"
-                  title="Espace Administrateur"
-                  onClick={handleAdminAccess}
-                  style={{
-                    backgroundColor: '#111111',
-                    color: '#dfba5c',
-                    border: '1px solid rgba(223, 186, 92, 0.4)'
-                  }}
-                >
-                  <i className="fa-solid fa-shield-halved" />
                 </button>
               </div>
             </div>
@@ -583,12 +574,14 @@ export default function ByAfrikaPage() {
               <a href="#" onClick={(e) => { e.preventDefault(); setActivePage('femmes'); setMobileMenuOpen(false); }}>Femmes</a>
               <a href="#" onClick={(e) => { e.preventDefault(); setActivePage('apropos'); setMobileMenuOpen(false); }}>À propos</a>
               <a href="#" onClick={(e) => { e.preventDefault(); setActivePage('contact'); setMobileMenuOpen(false); }}>Contact & Réclamations</a>
-              <a href="#" onClick={(e) => { e.preventDefault(); if (user) setActivePage('compte'); else setAuthModalOpen(true); setMobileMenuOpen(false); }}>
+              <a href="#" onClick={(e) => { e.preventDefault(); if (!user) setAuthModalOpen(true); else if (user.role === 'admin') setActivePage('admin'); else setActivePage('compte'); setMobileMenuOpen(false); }}>
                 <i className="fa-solid fa-user" /> {user ? user.name : 'Mon Compte / Connexion'}
               </a>
-              <a href="#" onClick={(e) => { e.preventDefault(); handleAdminAccess(); setMobileMenuOpen(false); }} style={{ color: '#dfba5c' }}>
-                <i className="fa-solid fa-shield-halved" /> Panneau d'Administration
-              </a>
+              {user && user.role === 'admin' && (
+                <a href="#" onClick={(e) => { e.preventDefault(); setActivePage('admin'); setMobileMenuOpen(false); }} style={{ color: '#dfba5c' }}>
+                  <i className="fa-solid fa-shield-halved" /> Panneau d'Administration
+                </a>
+              )}
             </div>
           )}
 
