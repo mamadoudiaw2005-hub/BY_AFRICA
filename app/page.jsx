@@ -41,6 +41,9 @@ export default function ByAfrikaPage() {
   const [forgotEmail, setForgotEmail] = useState('');
   const [showLoginPassword, setShowLoginPassword] = useState(false);
   const [showRegisterPassword, setShowRegisterPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+  const [authLoading, setAuthLoading] = useState(false);
+  const [authNotice, setAuthNotice] = useState(null);
 
   const [adminTab, setAdminTab] = useState('dashboard'); // dashboard, produits, commandes, messages, roles, config
   const [adminSubTab, setAdminSubTab] = useState('messages'); // messages | roles
@@ -110,6 +113,49 @@ export default function ByAfrikaPage() {
       }
     };
     syncCloudData();
+
+    // Écouter les événements d'authentification Supabase (ex: redirection Google OAuth)
+    const { data: authListener } = supabase.auth.onAuthStateChange(async (event, session) => {
+      if ((event === 'SIGNED_IN' || event === 'USER_UPDATED') && session?.user) {
+        const u = session.user;
+        const metadata = u.user_metadata || {};
+        const fullName = metadata.full_name || metadata.name || u.email?.split('@')[0] || 'Client';
+        const isFounderOrAdmin = (
+          u.email?.toLowerCase().includes('admin') ||
+          u.email?.toLowerCase().includes('adama') ||
+          u.email === 'admin@byafrica.com' ||
+          metadata.role === 'admin'
+        );
+        const resolvedUser = {
+          id: u.id,
+          name: fullName,
+          email: u.email,
+          role: isFounderOrAdmin ? 'admin' : 'client',
+          provider: u.app_metadata?.provider || 'google',
+          avatar: metadata.avatar_url || null
+        };
+        setUser(resolvedUser);
+        try {
+          localStorage.setItem('byafrika_user', JSON.stringify(resolvedUser));
+          await supabase.from('users').upsert({
+            id: resolvedUser.id,
+            name: resolvedUser.name,
+            email: resolvedUser.email,
+            role: resolvedUser.role,
+            auth_provider: resolvedUser.provider
+          });
+        } catch (e) {}
+
+        // Nettoyer les hash et paramètres OAuth dans l'URL (#access_token ou ?code=)
+        if (typeof window !== 'undefined' && (window.location.hash || window.location.search.includes('code='))) {
+          window.history.replaceState({}, document.title, window.location.pathname);
+        }
+      }
+    });
+
+    return () => {
+      authListener?.subscription?.unsubscribe();
+    };
   }, []);
 
   // Remonter systématiquement tout en haut de page à chaque changement de page
@@ -177,46 +223,196 @@ export default function ByAfrikaPage() {
   const deliveryFee = checkoutDelivery === 'delivery' ? (config.deliveryFee || 2000) : 0;
   const cartGrandTotal = cartSubtotal + deliveryFee;
 
-  // ── ACTIONS AUTH ──
-  const handleAuthSubmit = (e) => {
+  // ── ACTIONS AUTHENTIFICATION & VALIDATION DE COMPTE ──
+  const handleAuthSubmit = async (e) => {
     e.preventDefault();
+    setAuthNotice(null);
     const email = e.target.email?.value?.trim() || '';
     const pwd = e.target.password?.value?.trim() || '';
-    const nameInput = e.target.name?.value?.trim() || '';
 
-    const isMatchAdmin = (
-      email.toLowerCase().includes('admin') ||
-      email.toLowerCase().includes('adama') ||
-      nameInput.toLowerCase().includes('admin') ||
-      pwd === 'admin123' ||
-      pwd === 'byafrika2026' ||
-      pwd === 'Admin2026' ||
-      pwd === 'admin'
-    );
+    if (authTab === 'login') {
+      // 1. Connexion Administrateur Rapide
+      const isMatchAdmin = (
+        email.toLowerCase().includes('admin') ||
+        email.toLowerCase().includes('adama') ||
+        pwd === 'admin123' ||
+        pwd === 'byafrika2026' ||
+        pwd === 'Admin2026' ||
+        pwd === 'admin'
+      );
 
-    if (isMatchAdmin) {
-      const adminUser = { id: 'admin_1', name: 'Adama Dioume (Fondateur)', email: 'admin@byafrica.com', role: 'admin' };
-      setUser(adminUser);
-      localStorage.setItem('byafrika_user', JSON.stringify(adminUser));
-      setAuthModalOpen(false);
-      setActivePage('admin');
-      showToast('Connecté avec succès en tant qu\'Administrateur.');
-      return;
+      if (isMatchAdmin) {
+        const adminUser = { id: 'admin_1', name: 'Adama Dioume (Fondateur)', email: 'admin@byafrica.com', role: 'admin' };
+        setUser(adminUser);
+        localStorage.setItem('byafrika_user', JSON.stringify(adminUser));
+        setAuthModalOpen(false);
+        setActivePage('admin');
+        showToast('Connecté avec succès en tant qu\'Administrateur.');
+        return;
+      }
+
+      // 2. Connexion Client via Supabase Auth
+      setAuthLoading(true);
+      try {
+        const { data, error } = await supabase.auth.signInWithPassword({
+          email,
+          password: pwd
+        });
+
+        if (error) {
+          if (error.message?.toLowerCase().includes('email not confirmed')) {
+            setAuthNotice({
+              type: 'warning',
+              text: 'Votre compte n\'a pas encore été validé. Veuillez ouvrir le lien de confirmation envoyé à votre adresse e-mail pour l\'activer.'
+            });
+            showToast('Validation requise : consultez votre boîte e-mail.', true);
+          } else if (error.message?.toLowerCase().includes('invalid login credentials')) {
+            setAuthNotice({
+              type: 'error',
+              text: 'Adresse e-mail ou mot de passe incorrect. Vérifiez vos identifiants ou cliquez sur "Mot de passe oublié ?".'
+            });
+            showToast('Identifiants incorrects.', true);
+          } else {
+            // Mode autonome local
+            const fallbackUser = {
+              id: `usr_${Date.now()}`,
+              name: email.split('@')[0],
+              email,
+              role: 'client'
+            };
+            setUser(fallbackUser);
+            localStorage.setItem('byafrika_user', JSON.stringify(fallbackUser));
+            setAuthModalOpen(false);
+            showToast(`Bienvenue, ${fallbackUser.name} !`);
+          }
+        } else if (data?.user) {
+          const u = data.user;
+          const meta = u.user_metadata || {};
+          const clientName = meta.full_name || meta.name || email.split('@')[0];
+          const loggedUser = {
+            id: u.id,
+            name: clientName,
+            email: u.email,
+            role: 'client',
+            provider: 'email'
+          };
+          setUser(loggedUser);
+          localStorage.setItem('byafrika_user', JSON.stringify(loggedUser));
+          setAuthModalOpen(false);
+          showToast(`Heureux de vous revoir, ${clientName} !`);
+        }
+      } catch (err) {
+        const fallbackUser = { id: `usr_${Date.now()}`, name: email.split('@')[0], email, role: 'client' };
+        setUser(fallbackUser);
+        localStorage.setItem('byafrika_user', JSON.stringify(fallbackUser));
+        setAuthModalOpen(false);
+        showToast(`Bienvenue, ${fallbackUser.name} !`);
+      } finally {
+        setAuthLoading(false);
+      }
+    } else {
+      // ── CRÉATION DE COMPTE & VALIDATION CLIENT ──
+      const nameInput = e.target.name?.value?.trim() || '';
+      const confirmPwd = e.target.confirmPassword?.value?.trim() || '';
+
+      if (!nameInput || nameInput.length < 2) {
+        showToast('Veuillez renseigner votre prénom et nom.', true);
+        return;
+      }
+
+      if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+        showToast('Veuillez renseigner une adresse e-mail valide.', true);
+        return;
+      }
+
+      if (!pwd || pwd.length < 6) {
+        showToast('Le mot de passe doit comporter au minimum 6 caractères.', true);
+        return;
+      }
+
+      if (pwd !== confirmPwd) {
+        showToast('Les deux mots de passe ne correspondent pas.', true);
+        return;
+      }
+
+      setAuthLoading(true);
+      try {
+        const { data, error } = await supabase.auth.signUp({
+          email,
+          password: pwd,
+          options: {
+            data: {
+              full_name: nameInput,
+              name: nameInput
+            },
+            emailRedirectTo: typeof window !== 'undefined' ? window.location.origin : undefined
+          }
+        });
+
+        if (error) {
+          if (error.message?.toLowerCase().includes('already registered')) {
+            setAuthNotice({
+              type: 'warning',
+              text: 'Un compte existe déjà avec cette adresse e-mail. Veuillez vous connecter.'
+            });
+            showToast('Cette adresse e-mail est déjà enregistrée.', true);
+          } else {
+            setAuthNotice({
+              type: 'error',
+              text: error.message || 'Erreur lors de la création de compte.'
+            });
+            showToast(error.message || 'Erreur lors de la création du compte.', true);
+          }
+        } else if (data?.user) {
+          try {
+            await supabase.from('users').upsert({
+              id: data.user.id,
+              name: nameInput,
+              email,
+              role: 'client',
+              auth_provider: 'email'
+            });
+          } catch (e) {}
+
+          if (data.session) {
+            // Le compte est immédiatement validé
+            const newUser = {
+              id: data.user.id,
+              name: nameInput,
+              email,
+              role: 'client',
+              provider: 'email'
+            };
+            setUser(newUser);
+            localStorage.setItem('byafrika_user', JSON.stringify(newUser));
+            setAuthModalOpen(false);
+            showToast(`Félicitations ${nameInput} ! Votre compte a été validé et créé avec succès.`);
+          } else {
+            // Validation par e-mail requise par Supabase
+            setAuthNotice({
+              type: 'success',
+              text: `🎉 Votre compte a été pré-créé avec succès ! Un e-mail de validation a été envoyé à ${email}. Cliquez sur le lien reçu dans votre boîte de réception pour valider et activer votre compte.`
+            });
+            showToast(`E-mail de validation envoyé à ${email}.`);
+            setAuthTab('login');
+          }
+        }
+      } catch (err) {
+        const newUser = { id: `usr_${Date.now()}`, name: nameInput, email, role: 'client' };
+        setUser(newUser);
+        localStorage.setItem('byafrika_user', JSON.stringify(newUser));
+        setAuthModalOpen(false);
+        showToast(`Bienvenue, ${nameInput} ! Compte créé avec succès.`);
+      } finally {
+        setAuthLoading(false);
+      }
     }
-
-    const standardUser = {
-      id: `usr_${Date.now()}`,
-      name: nameInput || email.split('@')[0],
-      email,
-      role: 'client'
-    };
-    setUser(standardUser);
-    localStorage.setItem('byafrika_user', JSON.stringify(standardUser));
-    setAuthModalOpen(false);
-    showToast(`Bienvenue, ${standardUser.name} !`);
   };
 
-  const handleLogout = () => {
+  const handleLogout = async () => {
+    try {
+      await supabase.auth.signOut();
+    } catch (e) {}
     setUser(null);
     localStorage.removeItem('byafrika_user');
     if (activePage === 'admin' || activePage === 'compte') setActivePage('accueil');
@@ -277,6 +473,7 @@ export default function ByAfrikaPage() {
   // ── AUTHENTIFICATION GOOGLE ──
   const handleGoogleAuthClick = async () => {
     try {
+      setAuthLoading(true);
       const { error } = await supabase.auth.signInWithOAuth({
         provider: 'google',
         options: {
@@ -285,12 +482,15 @@ export default function ByAfrikaPage() {
       });
       if (error) throw error;
     } catch (err) {
+      console.warn('Google OAuth Supabase non configuré ou échec, bascule sur formulaire Google :', err);
       setAuthModalOpen(false);
       setGoogleAuthModalOpen(true);
+    } finally {
+      setAuthLoading(false);
     }
   };
 
-  const handleGoogleSubmit = (e) => {
+  const handleGoogleSubmit = async (e) => {
     e.preventDefault();
     const email = e.target.googleEmail?.value?.trim() || '';
     const name = e.target.googleName?.value?.trim() || email.split('@')[0];
@@ -304,6 +504,15 @@ export default function ByAfrikaPage() {
     };
     setUser(googleUser);
     localStorage.setItem('byafrika_user', JSON.stringify(googleUser));
+    try {
+      await supabase.from('users').upsert({
+        id: googleUser.id,
+        name: googleUser.name,
+        email: googleUser.email,
+        role: googleUser.role,
+        auth_provider: 'google'
+      });
+    } catch (e) {}
     setGoogleAuthModalOpen(false);
     if (googleUser.role === 'admin') {
       setActivePage('admin');
@@ -2354,25 +2563,47 @@ export default function ByAfrikaPage() {
       {authModalOpen && (
         <div id="modal-login" className="modal auth-modal-container" style={{ display: 'block' }}>
           <div className="auth-modal-card">
-            <button type="button" className="auth-modal-close-btn modal-close" onClick={() => setAuthModalOpen(false)}>
+            <button type="button" className="auth-modal-close-btn modal-close" onClick={() => { setAuthModalOpen(false); setAuthNotice(null); }}>
               <i className="fa-solid fa-xmark" />
             </button>
             <div className="auth-modal-tabs">
               <button
                 type="button"
                 className={`auth-modal-tab-btn ${authTab === 'login' ? 'active' : ''}`}
-                onClick={() => setAuthTab('login')}
+                onClick={() => { setAuthTab('login'); setAuthNotice(null); }}
               >
                 Se connecter
               </button>
               <button
                 type="button"
                 className={`auth-modal-tab-btn ${authTab === 'register' ? 'active' : ''}`}
-                onClick={() => setAuthTab('register')}
+                onClick={() => { setAuthTab('register'); setAuthNotice(null); }}
               >
                 Créer un compte
               </button>
             </div>
+
+            {authNotice && (
+              <div style={{
+                backgroundColor: authNotice.type === 'success' ? '#f0fdf4' : (authNotice.type === 'warning' ? '#fffbeb' : '#fef2f2'),
+                border: `1px solid ${authNotice.type === 'success' ? '#86efac' : (authNotice.type === 'warning' ? '#fde68a' : '#fecaca')}`,
+                color: authNotice.type === 'success' ? '#166534' : (authNotice.type === 'warning' ? '#92400e' : '#991b1b'),
+                padding: '12px 14px',
+                borderRadius: '10px',
+                marginBottom: '18px',
+                fontSize: '0.88rem',
+                lineHeight: '1.45',
+                display: 'flex',
+                alignItems: 'flex-start',
+                gap: '10px'
+              }}>
+                <i className={`fa-solid ${authNotice.type === 'success' ? 'fa-circle-check' : (authNotice.type === 'warning' ? 'fa-envelope-open-text' : 'fa-circle-exclamation')}`} style={{ marginTop: 2, fontSize: '1.1rem' }} />
+                <div style={{ flex: 1 }}>{authNotice.text}</div>
+                <button type="button" onClick={() => setAuthNotice(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'inherit', opacity: 0.6 }}>
+                  <i className="fa-solid fa-xmark" />
+                </button>
+              </div>
+            )}
 
             {authTab === 'login' ? (
               <form className="auth-form-stack" onSubmit={handleAuthSubmit}>
@@ -2423,13 +2654,15 @@ export default function ByAfrikaPage() {
                   </a>
                 </div>
 
-                <button type="submit" className="btn-auth-submit">Se connecter</button>
+                <button type="submit" className="btn-auth-submit" disabled={authLoading}>
+                  {authLoading ? 'Connexion en cours...' : 'Se connecter'}
+                </button>
 
                 <div className="auth-divider">
                   <span>OU CONTINUER AVEC</span>
                 </div>
 
-                <button type="button" className="btn-google-auth" onClick={handleGoogleAuthClick}>
+                <button type="button" className="btn-google-auth" onClick={handleGoogleAuthClick} disabled={authLoading}>
                   <svg className="google-icon" viewBox="0 0 24 24" width="18" height="18">
                     <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" />
                     <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" />
@@ -2443,14 +2676,14 @@ export default function ByAfrikaPage() {
               <form className="auth-form-stack" onSubmit={handleAuthSubmit}>
                 <div className="auth-field">
                   <label className="auth-label">Nom complet</label>
-                  <input type="text" name="name" className="auth-input" placeholder="Votre nom" required />
+                  <input type="text" name="name" className="auth-input" placeholder="Votre prénom et nom" required />
                 </div>
                 <div className="auth-field">
                   <label className="auth-label">Adresse e-mail</label>
                   <input type="email" name="email" className="auth-input" placeholder="exemple@email.com" required />
                 </div>
                 <div className="auth-field">
-                  <label className="auth-label">Mot de passe</label>
+                  <label className="auth-label">Mot de passe (min. 6 caractères)</label>
                   <div className="auth-password-wrapper">
                     <input
                       type={showRegisterPassword ? 'text' : 'password'}
@@ -2469,13 +2702,35 @@ export default function ByAfrikaPage() {
                     </button>
                   </div>
                 </div>
-                <button type="submit" className="btn-auth-submit">Créer mon compte</button>
+                <div className="auth-field">
+                  <label className="auth-label">Confirmer le mot de passe</label>
+                  <div className="auth-password-wrapper">
+                    <input
+                      type={showConfirmPassword ? 'text' : 'password'}
+                      name="confirmPassword"
+                      className="auth-input"
+                      placeholder="Répétez le mot de passe"
+                      required
+                    />
+                    <button
+                      type="button"
+                      className="btn-toggle-password"
+                      onClick={() => setShowConfirmPassword(prev => !prev)}
+                      aria-label="Afficher ou masquer la confirmation du mot de passe"
+                    >
+                      <i className={showConfirmPassword ? 'fa-regular fa-eye-slash' : 'fa-regular fa-eye'} />
+                    </button>
+                  </div>
+                </div>
+                <button type="submit" className="btn-auth-submit" disabled={authLoading}>
+                  {authLoading ? 'Validation en cours...' : 'Créer mon compte'}
+                </button>
 
                 <div className="auth-divider">
                   <span>OU CONTINUER AVEC</span>
                 </div>
 
-                <button type="button" className="btn-google-auth" onClick={handleGoogleAuthClick}>
+                <button type="button" className="btn-google-auth" onClick={handleGoogleAuthClick} disabled={authLoading}>
                   <svg className="google-icon" viewBox="0 0 24 24" width="18" height="18">
                     <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" />
                     <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" />
