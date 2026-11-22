@@ -1,1826 +1,1745 @@
 'use client';
 
-import { useState, useEffect, useMemo } from 'react';
-import { supabase } from '../lib/supabase';
-import { DEFAULT_PRODUCTS, DEFAULT_CONFIG, DEMO_ADMINS } from '../lib/initialData';
+import { useState, useEffect } from 'react';
+import { supabase } from '@/lib/supabase';
+import { DEFAULT_CONFIG, DEFAULT_PRODUCTS, DEMO_ADMINS } from '@/lib/initialData';
 
-export default function ByAfrikaApp() {
+export default function ByAfrikaPage() {
   // ── ÉTATS PRINCIPAUX ──
-  const [products, setProducts] = useState(DEFAULT_PRODUCTS);
+  const [activePage, setActivePage] = useState('accueil'); // accueil, boutique, hommes, femmes, apropos, contact, compte, admin
   const [config, setConfig] = useState(DEFAULT_CONFIG);
-  const [cart, setCart] = useState([]);
-  const [user, setUser] = useState(null);
+  const [products, setProducts] = useState(DEFAULT_PRODUCTS);
   const [orders, setOrders] = useState([]);
   const [messages, setMessages] = useState([]);
   const [usersList, setUsersList] = useState(DEMO_ADMINS);
+  const [user, setUser] = useState(null); // utilisateur connecté
 
-  // ── NAVIGATION & FILTRES ──
-  const [activePage, setActivePage] = useState('accueil'); // 'accueil' | 'boutique' | 'a-propos' | 'contact' | 'compte' | 'admin'
-  const [genderFilter, setGenderFilter] = useState('all');
-  const [categoryFilter, setCategoryFilter] = useState('all');
+  // ── FILTRES BOUTIQUE ──
+  const [filterGenre, setFilterGenre] = useState('');
+  const [filterCategory, setFilterCategory] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
   const [searchOpen, setSearchOpen] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   // ── MODALS ──
   const [cartOpen, setCartOpen] = useState(false);
+  const [cart, setCart] = useState([]);
+  const [productModal, setProductModal] = useState(null);
+  const [selectedSize, setSelectedSize] = useState('M');
+  const [selectedColor, setSelectedColor] = useState('Noir');
+  const [selectedQty, setSelectedQty] = useState(1);
+
+  const [checkoutOpen, setCheckoutOpen] = useState(false);
+  const [checkoutDelivery, setCheckoutDelivery] = useState('delivery'); // 'delivery' | 'pickup'
+  const [confirmedOrder, setConfirmedOrder] = useState(null);
+
   const [authModalOpen, setAuthModalOpen] = useState(false);
   const [authTab, setAuthTab] = useState('login'); // 'login' | 'register'
-  const [productModal, setProductModal] = useState(null); // produit sélectionné pour détails
-  const [modalSize, setModalSize] = useState('M');
-  const [modalColor, setModalColor] = useState('Noir');
-  const [modalQty, setModalQty] = useState(1);
-  const [checkoutOpen, setCheckoutOpen] = useState(false);
-  const [receiptOrder, setReceiptOrder] = useState(null);
 
-  // ── ADMIN ──
-  const [adminTab, setAdminTab] = useState('dashboard'); // 'dashboard' | 'produits' | 'commandes' | 'messages' | 'roles' | 'config'
+  const [adminTab, setAdminTab] = useState('dashboard'); // dashboard, produits, commandes, messages, roles, config
+  const [adminSubTab, setAdminSubTab] = useState('messages'); // messages | roles
+  const [toastMessage, setToastMessage] = useState('');
+  const [cookieConsent, setCookieConsent] = useState(false);
+
+  // Formulaires Admin
   const [editingProduct, setEditingProduct] = useState(null);
-  const [productFormOpen, setProductFormOpen] = useState(false);
-  const [selectedAdminOrder, setSelectedAdminOrder] = useState(null);
+  const [showProductFormModal, setShowProductFormModal] = useState(false);
   const [selectedAdminMessage, setSelectedAdminMessage] = useState(null);
-  const [addUserModalOpen, setAddUserModalOpen] = useState(false);
-  const [supabaseStatus, setSupabaseStatus] = useState({ checked: false, connected: false, message: '' });
+  const [showAddUserModal, setShowAddUserModal] = useState(false);
 
-  // ── CHECKOUT FORM ──
-  const [checkoutDelivery, setCheckoutDelivery] = useState('delivery'); // 'delivery' | 'pickup'
-  const [checkoutName, setCheckoutName] = useState('');
-  const [checkoutPhone, setCheckoutPhone] = useState('');
-  const [checkoutAddress, setCheckoutAddress] = useState('');
-  const [checkoutNotes, setCheckoutNotes] = useState('');
-  const [checkoutCreateAccount, setCheckoutCreateAccount] = useState(true);
-  const [checkoutEmail, setCheckoutEmail] = useState('');
-  const [checkoutPassword, setCheckoutPassword] = useState('');
-  const [checkoutOptin, setCheckoutOptin] = useState(true);
-
-  // ── CONTACT FORM ──
-  const [contactName, setContactName] = useState('');
-  const [contactContact, setContactContact] = useState('');
-  const [contactSubject, setContactSubject] = useState('');
-  const [contactType, setContactType] = useState('Demande générale');
-  const [contactMessage, setContactMessage] = useState('');
-
-  // ── COOKIE CONSENT & TOAST ──
-  const [cookieConsent, setCookieConsent] = useState(true); // masqué par défaut si déjà accepté
-  const [toast, setToast] = useState({ visible: false, message: '', isError: false });
-
-  // Notification Toast Helper
-  const showToast = (message, isError = false) => {
-    setToast({ visible: true, message, isError });
-    setTimeout(() => {
-      setToast(prev => ({ ...prev, visible: false }));
-    }, 3500);
-  };
-
-  // ── CHARGEMENT INITIAL (LocalStorage & Supabase) ──
+  // ── CHARGEMENT LOCALSTORAGE & SUPABASE ──
   useEffect(() => {
-    // 1. Panier LocalStorage
-    try {
-      const savedCart = localStorage.getItem('byafrika_cart');
-      if (savedCart) setCart(JSON.parse(savedCart));
-    } catch (e) { }
-
-    // 2. Utilisateur LocalStorage
+    // Restaurer session utilisateur & panier
     try {
       const savedUser = localStorage.getItem('byafrika_user');
       if (savedUser) setUser(JSON.parse(savedUser));
-    } catch (e) { }
 
-    // 3. Cookie Consent LocalStorage
-    try {
-      const consent = localStorage.getItem('byafrika_cookie_consent');
-      if (!consent) setCookieConsent(false);
-    } catch (e) { }
+      const savedCart = localStorage.getItem('byafrika_cart');
+      if (savedCart) setCart(JSON.parse(savedCart));
 
-    // 4. Charger données Supabase
-    fetchSupabaseData();
+      const savedConsent = localStorage.getItem('byafrika_cookie_consent');
+      if (savedConsent) setCookieConsent(true);
+    } catch (e) {
+      console.error(e);
+    }
+
+    // Synchronisation Supabase en arrière-plan
+    const syncCloudData = async () => {
+      try {
+        const { data: dbProds } = await supabase.from('products').select('*');
+        if (dbProds && dbProds.length > 0) setProducts(dbProds);
+
+        const { data: dbOrders } = await supabase.from('orders').select('*').order('created_at', { ascending: false });
+        if (dbOrders && dbOrders.length > 0) setOrders(dbOrders);
+
+        const { data: dbMsgs } = await supabase.from('messages').select('*').order('created_at', { ascending: false });
+        if (dbMsgs && dbMsgs.length > 0) setMessages(dbMsgs);
+      } catch (err) {
+        console.warn('Mode autonome local activé.', err);
+      }
+    };
+    syncCloudData();
   }, []);
 
-  // Sauvegarder le panier dans LocalStorage à chaque modification
+  // Sauvegarder panier
   useEffect(() => {
     try {
       localStorage.setItem('byafrika_cart', JSON.stringify(cart));
-    } catch (e) { }
+    } catch (e) {}
   }, [cart]);
 
-  // Synchronisation avec Supabase Cloud
-  const fetchSupabaseData = async () => {
-    try {
-      // Tester la connexion Supabase
-      const { data: dbProducts, error: prodErr } = await supabase.from('products').select('*').order('created_at', { ascending: false });
-      if (!prodErr && dbProducts && dbProducts.length > 0) {
-        // Normalisation
-        const normalized = dbProducts.map(p => ({
-          id: p.id,
-          name: p.name,
-          description: p.description,
-          price: Number(p.price) || 0,
-          genre: p.genre || 'Unisexe',
-          category: p.category || 'T-shirts',
-          sizes: p.sizes || ['M', 'L', 'XL'],
-          colors: p.colors || ['Noir'],
-          stock: p.stock || 10,
-          image: p.image || 'tshirt-byafrika.jpg',
-          featured: p.featured,
-          createdAt: p.created_at
-        }));
-        setProducts(normalized);
-        setSupabaseStatus({ checked: true, connected: true, message: 'Connecté en direct à Supabase' });
-      } else {
-        setSupabaseStatus({ checked: true, connected: false, message: 'Mode secours local actif' });
-      }
+  // Toast
+  const showToast = (msg) => {
+    setToastMessage(msg);
+    setTimeout(() => setToastMessage(''), 3500);
+  };
 
-      // Config
-      const { data: dbConfig } = await supabase.from('site_config').select('*').eq('id', 'main').single();
-      if (dbConfig && dbConfig.data) {
-        setConfig(dbConfig.data);
-      }
-
-      // Commandes
-      const { data: dbOrders } = await supabase.from('orders').select('*').order('created_at', { ascending: false });
-      if (dbOrders) {
-        const normOrders = dbOrders.map(o => ({
-          id: o.id,
-          items: o.items || [],
-          customer: o.customer || {},
-          deliveryType: o.delivery_type || 'Livraison à domicile',
-          deliveryFee: Number(o.delivery_fee) || 2000,
-          total: Number(o.total) || 0,
-          status: o.status || 'Reçue',
-          paymentMethod: o.payment_method,
-          createdAt: o.created_at,
-          updatedAt: o.updated_at
-        }));
-        setOrders(normOrders);
-      }
-
-      // Messages
-      const { data: dbMsgs } = await supabase.from('messages').select('*').order('created_at', { ascending: false });
-      if (dbMsgs) {
-        const normMsgs = dbMsgs.map(m => ({
-          id: m.id,
-          name: m.name,
-          email: m.email,
-          phone: m.phone,
-          subject: m.subject,
-          type: m.type,
-          orderId: m.order_id,
-          message: m.message,
-          status: m.status || 'Nouveau',
-          createdAt: m.created_at
-        }));
-        setMessages(normMsgs);
-      }
-    } catch (e) {
-      console.log('Mode secours local actif:', e);
-      setSupabaseStatus({ checked: true, connected: false, message: 'Stockage local actif' });
-    }
+  const formatPrice = (p) => {
+    return (Number(p) || 0).toLocaleString('fr-FR') + ' FCFA';
   };
 
   // ── ACTIONS PANIER ──
-  const addToCart = (product, size, color, qty = 1) => {
-    const quantity = Math.max(1, parseInt(qty, 10) || 1);
+  const addToCart = (product, size = 'M', color = 'Noir', qty = 1) => {
     setCart(prev => {
-      const idx = prev.findIndex(item => item.productId === product.id && item.size === size && item.color === color);
-      if (idx > -1) {
-        const updated = [...prev];
-        updated[idx].qty += quantity;
-        return updated;
+      const existing = prev.find(i => i.id === product.id && i.size === size && i.color === color);
+      if (existing) {
+        return prev.map(i => i === existing ? { ...i, qty: i.qty + qty } : i);
       }
-      return [
-        ...prev,
-        {
-          productId: product.id,
-          name: product.name,
-          price: product.price,
-          image: product.image || 'tshirt-byafrika.jpg',
-          size: size || (product.sizes?.[0] || 'Standard'),
-          color: color || (product.colors?.[0] || 'Noir'),
-          qty: quantity
-        }
-      ];
+      return [...prev, {
+        id: product.id,
+        name: product.name,
+        price: product.price,
+        image: product.image || '/tshirt-byafrika.jpg',
+        size,
+        color,
+        qty
+      }];
     });
-
-    showToast(`${product.name} ajouté au panier !`);
-    if (productModal) setProductModal(null);
+    showToast(`"${product.name}" (${size}) ajouté au panier !`);
   };
 
-  const updateCartQty = (index, delta) => {
+  const updateCartQty = (idx, delta) => {
     setCart(prev => {
       const copy = [...prev];
-      copy[index].qty += delta;
-      if (copy[index].qty <= 0) {
-        copy.splice(index, 1);
-      }
+      copy[idx].qty += delta;
+      if (copy[idx].qty <= 0) copy.splice(idx, 1);
       return copy;
     });
   };
 
-  const removeFromCart = (index) => {
-    setCart(prev => prev.filter((_, i) => i !== index));
-    showToast('Article retiré du panier');
+  const removeCartItem = (idx) => {
+    setCart(prev => prev.filter((_, i) => i !== idx));
   };
 
-  const cartTotalItems = useMemo(() => cart.reduce((sum, item) => sum + item.qty, 0), [cart]);
-  const cartSubtotal = useMemo(() => cart.reduce((sum, item) => sum + item.price * item.qty, 0), [cart]);
-  const deliveryFee = checkoutDelivery === 'pickup' ? 0 : (config.deliveryFee || 2000);
-  const checkoutTotal = cartSubtotal + deliveryFee;
+  const cartTotalItems = cart.reduce((s, i) => s + i.qty, 0);
+  const cartSubtotal = cart.reduce((s, i) => s + (i.price * i.qty), 0);
+  const deliveryFee = checkoutDelivery === 'delivery' ? (config.deliveryFee || 2000) : 0;
+  const cartGrandTotal = cartSubtotal + deliveryFee;
 
-  // Formatage FCFA
-  const formatPrice = (amount) => {
-    return new Intl.NumberFormat('fr-FR').format(amount || 0) + ' FCFA';
-  };
-
-  // Filtrage des produits
-  const filteredProducts = useMemo(() => {
-    return products.filter(p => {
-      // Filtre genre
-      if (genderFilter !== 'all') {
-        const pGenre = (p.genre || '').toLowerCase();
-        if (genderFilter === 'homme' && pGenre !== 'homme' && pGenre !== 'unisexe') return false;
-        if (genderFilter === 'femme' && pGenre !== 'femme' && pGenre !== 'unisexe') return false;
-        if (genderFilter === 'unisexe' && pGenre !== 'unisexe') return false;
-      }
-      // Filtre catégorie
-      if (categoryFilter !== 'all') {
-        if ((p.category || '').toLowerCase() !== categoryFilter.toLowerCase()) return false;
-      }
-      // Recherche
-      if (searchQuery.trim()) {
-        const q = searchQuery.toLowerCase();
-        const matchName = (p.name || '').toLowerCase().includes(q);
-        const matchDesc = (p.description || '').toLowerCase().includes(q);
-        const matchCat = (p.category || '').toLowerCase().includes(q);
-        if (!matchName && !matchDesc && !matchCat) return false;
-      }
-      return true;
-    });
-  }, [products, genderFilter, categoryFilter, searchQuery]);
-
-  // ── ACTIONS COMMANDE ──
-  const handlePlaceOrder = async (e) => {
+  // ── ACTIONS AUTH ──
+  const handleAuthSubmit = (e) => {
     e.preventDefault();
-    if (cart.length === 0) {
-      showToast('Votre panier est vide !', true);
-      return;
-    }
-    if (!checkoutName.trim() || !checkoutPhone.trim()) {
-      showToast('Veuillez renseigner votre nom et votre numéro de téléphone', true);
-      return;
-    }
-    if (checkoutDelivery === 'delivery' && !checkoutAddress.trim()) {
-      showToast('Veuillez renseigner votre adresse de livraison', true);
-      return;
-    }
+    const email = e.target.email?.value?.trim() || '';
+    const pwd = e.target.password?.value?.trim() || '';
 
-    const orderId = `CMD-${Date.now()}`;
-    const newOrder = {
-      id: orderId,
-      items: cart,
-      customer: {
-        name: checkoutName.trim(),
-        phone: checkoutPhone.trim(),
-        address: checkoutDelivery === 'delivery' ? checkoutAddress.trim() : 'Retrait en Boutique BY_AFRIKA (Dakar)',
-        notes: checkoutNotes.trim(),
-        email: checkoutEmail.trim()
-      },
-      deliveryType: checkoutDelivery === 'pickup' ? 'Retrait en boutique' : 'Livraison à domicile',
-      deliveryFee,
-      total: checkoutTotal,
-      status: 'Reçue',
-      paymentMethod: checkoutDelivery === 'pickup'
-        ? 'Paiement au retrait en boutique (0 FCFA)'
-        : 'Paiement à la livraison (Arriver Payer)',
-      createdAt: new Date().toISOString()
-    };
-
-    // 1. Sauvegarde locale
-    setOrders(prev => [newOrder, ...prev]);
-
-    // 2. Décrémenter les stocks
-    setProducts(prev => {
-      const copy = [...prev];
-      cart.forEach(cItem => {
-        const prod = copy.find(p => p.id === cItem.productId);
-        if (prod) prod.stock = Math.max(0, (prod.stock || 0) - cItem.qty);
-      });
-      return copy;
-    });
-
-    // 3. Sauvegarde Cloud Supabase
-    try {
-      await supabase.from('orders').insert({
-        id: newOrder.id,
-        items: newOrder.items,
-        customer: newOrder.customer,
-        delivery_type: newOrder.deliveryType,
-        delivery_fee: newOrder.deliveryFee,
-        total: newOrder.total,
-        status: newOrder.status,
-        payment_method: newOrder.paymentMethod,
-        created_at: newOrder.createdAt
-      });
-    } catch (err) {
-      console.log('Sauvegarde Supabase:', err);
-    }
-
-    // Réinitialiser le panier et ouvrir le reçu
-    setCart([]);
-    setCheckoutOpen(false);
-    setReceiptOrder(newOrder);
-    showToast('Votre commande a été validée avec succès !');
-  };
-
-  // ── ACTIONS AUTHENTIFICATION ──
-  const handleLogin = (e) => {
-    e.preventDefault();
-    const emailInput = e.target.email.value.trim().toLowerCase();
-    const pwdInput = e.target.password.value.trim();
-
-    // Vérifier admin demo
-    if (emailInput === 'admin@byafrica.com' && (pwdInput === 'admin123' || pwdInput === 'byafrika2026')) {
-      const loggedAdmin = { id: 'user_admin_1', name: 'Direction BY_AFRIKA', email: 'admin@byafrica.com', role: 'admin' };
-      setUser(loggedAdmin);
-      localStorage.setItem('byafrika_user', JSON.stringify(loggedAdmin));
+    if (email === 'admin@byafrica.com' && (pwd === 'admin123' || pwd === 'byafrika2026')) {
+      const adminUser = { id: 'admin_1', name: 'Direction BY_AFRIKA', email: 'admin@byafrica.com', role: 'admin' };
+      setUser(adminUser);
+      localStorage.setItem('byafrika_user', JSON.stringify(adminUser));
       setAuthModalOpen(false);
-      showToast('Bienvenue sur le tableau de bord Administrateur !');
+      showToast('Connecté avec succès en tant qu\'Administrateur.');
       return;
     }
 
-    // Connexion client standard
-    const loggedUser = {
-      id: `user_${Date.now()}`,
-      name: emailInput.split('@')[0].toUpperCase(),
-      email: emailInput,
+    const standardUser = {
+      id: `usr_${Date.now()}`,
+      name: e.target.name?.value?.trim() || email.split('@')[0].toUpperCase(),
+      email,
       role: 'client'
     };
-    setUser(loggedUser);
-    localStorage.setItem('byafrika_user', JSON.stringify(loggedUser));
+    setUser(standardUser);
+    localStorage.setItem('byafrika_user', JSON.stringify(standardUser));
     setAuthModalOpen(false);
-    showToast(`Bienvenue sur BY_AFRIKA, ${loggedUser.name} !`);
+    showToast(`Bienvenue, ${standardUser.name} !`);
   };
 
   const handleLogout = () => {
     setUser(null);
     localStorage.removeItem('byafrika_user');
-    setActivePage('accueil');
-    showToast('Vous avez été déconnecté(e)');
+    if (activePage === 'admin' || activePage === 'compte') setActivePage('accueil');
+    showToast('Vous avez été déconnecté.');
   };
 
-  // ── ACTIONS CONTACT & RÉCLAMATIONS ──
+  // ── PASSATION DE COMMANDE (ARRIVER PAYER) ──
+  const handleCheckoutSubmit = async (e) => {
+    e.preventDefault();
+    if (cart.length === 0) return;
+
+    const fd = new FormData(e.target);
+    const newOrder = {
+      id: `CMD-${Date.now()}`,
+      customer: {
+        name: fd.get('name'),
+        phone: fd.get('phone'),
+        email: fd.get('email') || (user ? user.email : ''),
+        address: checkoutDelivery === 'delivery' ? fd.get('address') : 'Retrait en boutique BY_AFRIKA (Dakar)',
+        notes: fd.get('notes') || ''
+      },
+      deliveryType: checkoutDelivery === 'delivery' ? 'Livraison à domicile' : 'Retrait en boutique (0 FCFA)',
+      deliveryFee,
+      items: [...cart],
+      subtotal: cartSubtotal,
+      total: cartGrandTotal,
+      status: 'Reçue',
+      paymentMethod: 'Arriver Payer (Espèces / Wave à la livraison)',
+      createdAt: new Date().toISOString()
+    };
+
+    setOrders(prev => [newOrder, ...prev]);
+    setCart([]);
+    setCheckoutOpen(false);
+    setConfirmedOrder(newOrder);
+
+    // Sauvegarde Cloud Supabase
+    try {
+      await supabase.from('orders').insert([{
+        id: newOrder.id,
+        customer_name: newOrder.customer.name,
+        customer_phone: newOrder.customer.phone,
+        customer_email: newOrder.customer.email,
+        delivery_address: newOrder.customer.address,
+        delivery_type: newOrder.deliveryType,
+        total_amount: newOrder.total,
+        status: newOrder.status,
+        items: newOrder.items
+      }]);
+    } catch (err) {}
+
+    showToast('Votre commande a été enregistrée avec succès !');
+  };
+
+  // ── ENVOI DE MESSAGE / RÉCLAMATION ──
   const handleContactSubmit = async (e) => {
     e.preventDefault();
-    if (!contactName.trim() || !contactMessage.trim() || !contactContact.trim()) {
-      showToast('Veuillez remplir tous les champs obligatoires', true);
-      return;
-    }
-
-    const newMsg = {
+    const fd = new FormData(e.target);
+    const msg = {
       id: `msg_${Date.now()}`,
-      name: contactName.trim(),
-      email: contactContact.includes('@') ? contactContact.trim() : '',
-      phone: !contactContact.includes('@') ? contactContact.trim() : '',
-      subject: contactSubject.trim() || 'Demande client',
-      type: contactType,
-      message: contactMessage.trim(),
+      name: fd.get('name'),
+      phone: fd.get('phone'),
+      email: fd.get('email') || '',
+      type: fd.get('type'),
+      orderId: fd.get('orderId') || '',
+      message: fd.get('message'),
       status: 'Nouveau',
       createdAt: new Date().toISOString()
     };
 
-    setMessages(prev => [newMsg, ...prev]);
+    setMessages(prev => [msg, ...prev]);
+    e.target.reset();
 
-    // Envoi Supabase
     try {
-      await supabase.from('messages').insert({
-        id: newMsg.id,
-        name: newMsg.name,
-        email: newMsg.email,
-        phone: newMsg.phone,
-        subject: newMsg.subject,
-        type: newMsg.type,
-        message: newMsg.message,
-        status: newMsg.status,
-        created_at: newMsg.createdAt
-      });
-    } catch (e) { }
+      await supabase.from('messages').insert([msg]);
+    } catch (e) {}
 
-    setContactName('');
-    setContactContact('');
-    setContactSubject('');
-    setContactMessage('');
-    showToast('Votre message a été transmis avec succès à notre équipe !');
+    showToast('Votre message a bien été envoyé. Notre service client vous répondra rapidement !');
   };
 
-  // ── ACTIONS ADMIN ──
-  const handleUpdateOrderStatus = async (orderId, newStatus) => {
-    setOrders(prev => prev.map(o => o.id === orderId ? { ...o, status: newStatus } : o));
-    try {
-      await supabase.from('orders').update({ status: newStatus, updated_at: new Date().toISOString() }).eq('id', orderId);
-    } catch (e) { }
-    showToast(`Statut commande ${orderId} : ${newStatus}`);
-  };
-
-  const handleDeleteProduct = async (prodId) => {
-    if (!confirm('Supprimer définitivement ce produit ?')) return;
-    setProducts(prev => prev.filter(p => p.id !== prodId));
-    try {
-      await supabase.from('products').delete().eq('id', prodId);
-    } catch (e) { }
-    showToast('Produit supprimé');
-  };
-
+  // ── GESTION DES PRODUITS (ADMIN) ──
   const handleSaveProduct = async (e) => {
     e.preventDefault();
-    const form = e.target;
-    const name = form.name.value.trim();
-    const price = parseInt(form.price.value, 10) || 0;
-    const stock = parseInt(form.stock.value, 10) || 10;
-    const genre = form.genre.value;
-    const category = form.category.value;
-    const description = form.description.value.trim();
-    const image = form.image.value.trim() || 'tshirt-byafrika.jpg';
+    const fd = new FormData(e.target);
+    const prodData = {
+      id: editingProduct?.id || `prod_${Date.now()}`,
+      name: fd.get('name'),
+      category: fd.get('category'),
+      genre: fd.get('genre'),
+      price: Number(fd.get('price')),
+      description: fd.get('description'),
+      image: fd.get('image') || '/tshirt-byafrika.jpg',
+      sizes: fd.get('sizes').split(',').map(s => s.trim()),
+      colors: fd.get('colors').split(',').map(c => c.trim()),
+      stock: Number(fd.get('stock')),
+      featured: fd.get('featured') === 'on'
+    };
 
     if (editingProduct) {
-      // Édition
-      const updated = { ...editingProduct, name, price, stock, genre, category, description, image };
-      setProducts(prev => prev.map(p => p.id === updated.id ? updated : p));
-      try {
-        await supabase.from('products').update({
-          name, price, stock, genre, category, description, image
-        }).eq('id', updated.id);
-      } catch (e) { }
-      showToast('Produit mis à jour avec succès !');
+      setProducts(prev => prev.map(p => p.id === editingProduct.id ? prodData : p));
+      showToast('Produit mis à jour avec succès.');
     } else {
-      // Création
-      const newProd = {
-        id: `prod_${Date.now()}`,
-        name, price, stock, genre, category, description, image,
-        sizes: ['S', 'M', 'L', 'XL', 'XXL'],
-        colors: ['Noir', 'Blanc'],
-        featured: false,
-        createdAt: new Date().toISOString()
-      };
-      setProducts(prev => [newProd, ...prev]);
-      try {
-        await supabase.from('products').insert(newProd);
-      } catch (e) { }
+      setProducts(prev => [prodData, ...prev]);
       showToast('Nouveau produit ajouté au catalogue !');
     }
-    setProductFormOpen(false);
+
+    try {
+      await supabase.from('products').upsert([prodData]);
+    } catch (e) {}
+
+    setShowProductFormModal(false);
     setEditingProduct(null);
   };
 
-  return (
-    <div className="byafrika-theme">
-      {/* ── TOAST NOTIFICATION ── */}
-      {toast.visible && (
-        <div className={`toast-notification ${toast.isError ? 'toast-error' : 'toast-success'}`}>
-          <i className={toast.isError ? 'fa-solid fa-circle-exclamation' : 'fa-solid fa-circle-check'} />
-          <span>{toast.message}</span>
-        </div>
-      )}
+  const handleDeleteProduct = async (id) => {
+    if (confirm('Voulez-vous vraiment supprimer cet article ?')) {
+      setProducts(prev => prev.filter(p => p.id !== id));
+      try {
+        await supabase.from('products').delete().eq('id', id);
+      } catch (e) {}
+      showToast('Produit retiré du catalogue.');
+    }
+  };
 
-      {/* ── BANDEAU ANNONCE LUXE ── */}
-      <div className="top-banner">
-        <span>LIVRAISON PARTOUT AU SÉNÉGAL • ARRANGEZ VOS ORIGINES AVEC CONFIANCE • BY_AFRIKA</span>
+  // ── FILTRAGE DES PRODUITS CLIENT ──
+  const getFilteredProducts = () => {
+    return products.filter(p => {
+      if (activePage === 'hommes' && p.genre !== 'Homme' && p.genre !== 'Unisexe') return false;
+      if (activePage === 'femmes' && p.genre !== 'Femme' && p.genre !== 'Unisexe') return false;
+      if (filterGenre && filterGenre !== 'Tous' && p.genre !== filterGenre && p.genre !== 'Unisexe') return false;
+      if (filterCategory && filterCategory !== 'Toutes' && p.category !== filterCategory) return false;
+      if (searchQuery) {
+        const q = searchQuery.toLowerCase();
+        return p.name.toLowerCase().includes(q) || (p.description && p.description.toLowerCase().includes(q));
+      }
+      return true;
+    });
+  };
+
+  const featuredProducts = products.filter(p => p.featured);
+
+  // ── COMPOSANT CARTE PRODUIT AVEC CLASSES EXACTES DE STYLE.CSS ──
+  const renderProductCard = (p) => (
+    <div key={p.id} className="product-card" data-product-id={p.id}>
+      <div
+        className="product-card-img-wrapper"
+        onClick={() => {
+          setProductModal(p);
+          setSelectedSize(p.sizes?.[0] || 'M');
+          setSelectedColor(p.colors?.[0] || 'Noir');
+          setSelectedQty(1);
+        }}
+      >
+        <img
+          className="product-card-img"
+          src={p.image.startsWith('/') ? p.image : `/${p.image}`}
+          alt={p.name}
+          onError={(e) => { e.target.src = '/tshirt-byafrika.jpg'; }}
+        />
+        <span className="product-badge">{p.genre}</span>
       </div>
-
-      {/* ── HEADER / NAVBAR PRINCIPALE ── */}
-      <header className="main-header">
-        <div className="header-container">
-          {/* Bouton Hamburger Mobile */}
+      <div className="product-card-info">
+        <span className="product-card-genre">{p.category || 'Vêtement'}</span>
+        <h3
+          className="product-card-title"
+          onClick={() => {
+            setProductModal(p);
+            setSelectedSize(p.sizes?.[0] || 'M');
+            setSelectedColor(p.colors?.[0] || 'Noir');
+            setSelectedQty(1);
+          }}
+        >
+          {p.name}
+        </h3>
+        <div className="product-card-price">
+          <span>{formatPrice(p.price)}</span>
+        </div>
+        <div className="product-card-actions">
           <button
             type="button"
-            className="hamburger-btn"
-            onClick={() => setMobileMenuOpen(prev => !prev)}
-            aria-label="Menu"
+            className="btn-card-view"
+            title="Voir les détails"
+            onClick={() => {
+              setProductModal(p);
+              setSelectedSize(p.sizes?.[0] || 'M');
+              setSelectedColor(p.colors?.[0] || 'Noir');
+              setSelectedQty(1);
+            }}
           >
-            <i className={mobileMenuOpen ? 'fa-solid fa-xmark' : 'fa-solid fa-bars'} />
+            <i className="fa-solid fa-eye" /> Voir le produit
           </button>
-
-          {/* Logo & Identité */}
-          <div className="brand-logo" onClick={() => setActivePage('accueil')}>
-            <img src="/logo.jpg" alt="Logo BY_AFRIKA" className="brand-logo-img" />
-            <span className="brand-name">BY_AFRIKA</span>
-          </div>
-
-          {/* Navigation Liens Desktop */}
-          <nav className="nav-links desktop-nav">
-            <button type="button" className={`nav-link ${activePage === 'accueil' ? 'active' : ''}`} onClick={() => setActivePage('accueil')}>Accueil</button>
-            <button type="button" className={`nav-link ${activePage === 'boutique' ? 'active' : ''}`} onClick={() => { setActivePage('boutique'); setGenderFilter('all'); }}>Boutique</button>
-            <button type="button" className={`nav-link ${genderFilter === 'homme' && activePage === 'boutique' ? 'active' : ''}`} onClick={() => { setActivePage('boutique'); setGenderFilter('homme'); }}>Homme</button>
-            <button type="button" className={`nav-link ${genderFilter === 'femme' && activePage === 'boutique' ? 'active' : ''}`} onClick={() => { setActivePage('boutique'); setGenderFilter('femme'); }}>Femme</button>
-            <button type="button" className={`nav-link ${activePage === 'a-propos' ? 'active' : ''}`} onClick={() => setActivePage('a-propos')}>À Propos</button>
-            <button type="button" className={`nav-link ${activePage === 'contact' ? 'active' : ''}`} onClick={() => setActivePage('contact')}>Contact</button>
-          </nav>
-
-          {/* Actions Droite (Recherche, Compte, Panier, Admin) */}
-          <div className="header-actions">
-            {/* Recherche rapide */}
-            <button type="button" className="action-circle-btn" onClick={() => setSearchOpen(prev => !prev)} title="Rechercher">
-              <i className="fa-solid fa-magnifying-glass" />
-            </button>
-
-            {/* Compte / Connexion */}
-            <button
-              type="button"
-              className="action-circle-btn"
-              onClick={() => {
-                if (user) setActivePage('compte');
-                else setAuthModalOpen(true);
-              }}
-              title={user ? `Compte (${user.name})` : 'Connexion'}
-            >
-              <i className="fa-regular fa-user" />
-            </button>
-
-            {/* Panier avec badge */}
-            <button
-              type="button"
-              className="action-circle-btn cart-action-btn"
-              onClick={() => setCartOpen(true)}
-              title="Panier"
-            >
-              <i className="fa-solid fa-bag-shopping" />
-              {cartTotalItems > 0 && <span className="cart-badge-count">{cartTotalItems}</span>}
-            </button>
-
-            {/* Raccourci vers l'administration */}
-            <button
-              type="button"
-              className="admin-switch-btn"
-              onClick={() => setActivePage(prev => prev === 'admin' ? 'accueil' : 'admin')}
-              title="Tableau de bord administration"
-            >
-              <i className="fa-solid fa-shield-halved" />
-              <span>{activePage === 'admin' ? 'Boutique' : 'Admin'}</span>
-            </button>
-          </div>
+          <button
+            type="button"
+            className="btn-card-add-cart"
+            title="Ajouter au panier"
+            onClick={() => addToCart(p, p.sizes?.[0] || 'M', p.colors?.[0] || 'Noir', 1)}
+          >
+            <i className="fa-solid fa-cart-plus" /> Ajouter au panier
+          </button>
         </div>
+      </div>
+    </div>
+  );
 
-        {/* Barre de recherche déployable */}
-        {searchOpen && (
-          <div className="search-bar-dropdown">
-            <div className="search-input-wrapper">
-              <i className="fa-solid fa-magnifying-glass" />
-              <input
-                type="text"
-                placeholder="Rechercher un T-shirt, une chemise, une robe..."
-                value={searchQuery}
-                onChange={e => setSearchQuery(e.target.value)}
-                autoFocus
-              />
-              {searchQuery && (
-                <button type="button" onClick={() => setSearchQuery('')}><i className="fa-solid fa-xmark" /></button>
-              )}
+  return (
+    <>
+      {/* ============================================================ */}
+      {/* VUE CLIENT (BOUTIQUE OFFICIELLE)                             */}
+      {/* ============================================================ */}
+      {activePage !== 'admin' ? (
+        <div id="client-view">
+          {/* Top Announcement Bar */}
+          <div className="top-announcement-bar">
+            <div className="announcement-content">
+              <span>✦</span>
+              <span>FIERTÉ AFRICAINE • LIVRAISON PARTOUT AU SÉNÉGAL • BY_AFRIKA</span>
+              <span>✦</span>
             </div>
           </div>
-        )}
 
-        {/* Menu Déroulant Mobile */}
-        {mobileMenuOpen && (
-          <div className="mobile-drawer">
-            <button type="button" className="mobile-nav-item" onClick={() => { setActivePage('accueil'); setMobileMenuOpen(false); }}>Accueil</button>
-            <button type="button" className="mobile-nav-item" onClick={() => { setActivePage('boutique'); setGenderFilter('all'); setMobileMenuOpen(false); }}>Toute la Boutique</button>
-            <button type="button" className="mobile-nav-item" onClick={() => { setActivePage('boutique'); setGenderFilter('homme'); setMobileMenuOpen(false); }}>Collection Homme</button>
-            <button type="button" className="mobile-nav-item" onClick={() => { setActivePage('boutique'); setGenderFilter('femme'); setMobileMenuOpen(false); }}>Collection Femme</button>
-            <button type="button" className="mobile-nav-item" onClick={() => { setActivePage('a-propos'); setMobileMenuOpen(false); }}>À Propos de la marque</button>
-            <button type="button" className="mobile-nav-item" onClick={() => { setActivePage('contact'); setMobileMenuOpen(false); }}>Contact & Assistance</button>
-            <button type="button" className="mobile-nav-item" onClick={() => { setActivePage('admin'); setMobileMenuOpen(false); }}>
-              <i className="fa-solid fa-shield-halved" style={{ marginRight: 8, color: '#d4af37' }} />
-              Panneau d'Administration
-            </button>
-          </div>
-        )}
-      </header>
+          {/* Header & Navbar Principale */}
+          <header className="site-header">
+            <div className="header-container">
+              {/* Bouton Hamburger Mobile */}
+              <button
+                type="button"
+                className={`hamburger ${mobileMenuOpen ? 'active' : ''}`}
+                id="hamburger-btn"
+                aria-label="Menu Mobile"
+                onClick={() => setMobileMenuOpen(prev => !prev)}
+              >
+                <span></span>
+                <span></span>
+                <span></span>
+              </button>
 
-      {/* ═══════════════════════════════════════════════════════════════
-          VUE 1 : PANNEAU D'ADMINISTRATION
-          ═══════════════════════════════════════════════════════════════ */}
-      {activePage === 'admin' ? (
-        <main className="admin-container">
-          <div className="admin-header-bar">
-            <div>
-              <h1 className="admin-title">Panneau d'Administration BY_AFRIKA</h1>
-              <p className="admin-subtitle">Gérez vos stocks, commandes clients, réclamations et synchronisation Supabase en temps réel.</p>
+              {/* Logo & Identité de la marque */}
+              <a
+                href="#"
+                className="brand-logo"
+                onClick={(e) => { e.preventDefault(); setActivePage('accueil'); }}
+              >
+                <img src="/logo.jpg" alt="Logo BY_AFRIKA" className="brand-logo-img" />
+                <span className="brand-logo-text">BY_AFRIKA</span>
+              </a>
+
+              {/* Liens centraux desktop */}
+              <nav className="nav-links">
+                <a
+                  href="#"
+                  className={`nav-link ${activePage === 'accueil' ? 'active' : ''}`}
+                  onClick={(e) => { e.preventDefault(); setActivePage('accueil'); }}
+                >
+                  ACCUEIL
+                </a>
+                <a
+                  href="#"
+                  className={`nav-link ${activePage === 'boutique' ? 'active' : ''}`}
+                  onClick={(e) => { e.preventDefault(); setActivePage('boutique'); setFilterGenre(''); }}
+                >
+                  BOUTIQUE
+                </a>
+                <a
+                  href="#"
+                  className={`nav-link ${activePage === 'hommes' ? 'active' : ''}`}
+                  onClick={(e) => { e.preventDefault(); setActivePage('hommes'); }}
+                >
+                  HOMMES
+                </a>
+                <a
+                  href="#"
+                  className={`nav-link ${activePage === 'femmes' ? 'active' : ''}`}
+                  onClick={(e) => { e.preventDefault(); setActivePage('femmes'); }}
+                >
+                  FEMMES
+                </a>
+                <a
+                  href="#"
+                  className={`nav-link ${activePage === 'apropos' ? 'active' : ''}`}
+                  onClick={(e) => { e.preventDefault(); setActivePage('apropos'); }}
+                >
+                  À PROPOS
+                </a>
+              </nav>
+
+              {/* Actions à droite */}
+              <div className="nav-actions">
+                <button
+                  type="button"
+                  id="search-toggle"
+                  className="action-btn-circle"
+                  aria-label="Rechercher"
+                  onClick={() => setSearchOpen(prev => !prev)}
+                >
+                  <i className="fa-solid fa-search" />
+                </button>
+
+                <button
+                  type="button"
+                  id="cart-btn"
+                  className="action-btn-circle"
+                  aria-label="Panier"
+                  onClick={() => setCartOpen(true)}
+                >
+                  <i className="fa-solid fa-shopping-bag" />
+                  <span id="cart-count">{cartTotalItems}</span>
+                </button>
+
+                <button
+                  type="button"
+                  id="account-btn"
+                  className="action-btn-pill"
+                  aria-label="Mon compte"
+                  onClick={() => {
+                    if (user) setActivePage('compte');
+                    else setAuthModalOpen(true);
+                  }}
+                >
+                  <i className="fa-solid fa-user" />
+                  <span id="account-btn-label">{user ? user.name : 'Se connecter'}</span>
+                </button>
+
+                {/* Accès Admin */}
+                <button
+                  type="button"
+                  className="action-btn-circle"
+                  title="Espace Administrateur"
+                  onClick={() => setActivePage('admin')}
+                  style={{
+                    backgroundColor: '#111111',
+                    color: '#dfba5c',
+                    border: '1px solid rgba(223, 186, 92, 0.4)'
+                  }}
+                >
+                  <i className="fa-solid fa-shield-halved" />
+                </button>
+              </div>
             </div>
-            <button type="button" className="btn btn-outline" onClick={() => setActivePage('accueil')}>
-              ← Retour à la boutique
-            </button>
-          </div>
+          </header>
 
-          {/* Onglets Administration */}
-          <div className="admin-tabs-nav">
-            <button type="button" className={`admin-tab-btn ${adminTab === 'dashboard' ? 'active' : ''}`} onClick={() => setAdminTab('dashboard')}>
-              <i className="fa-solid fa-chart-line" /> Tableau de Bord
-            </button>
-            <button type="button" className={`admin-tab-btn ${adminTab === 'produits' ? 'active' : ''}`} onClick={() => setAdminTab('produits')}>
-              <i className="fa-solid fa-shirt" /> Produits & Stocks ({products.length})
-            </button>
-            <button type="button" className={`admin-tab-btn ${adminTab === 'commandes' ? 'active' : ''}`} onClick={() => setAdminTab('commandes')}>
-              <i className="fa-solid fa-bag-shopping" /> Commandes ({orders.length})
-            </button>
-            <button type="button" className={`admin-tab-btn ${adminTab === 'messages' ? 'active' : ''}`} onClick={() => setAdminTab('messages')}>
-              <i className="fa-solid fa-headset" /> Messages & Réclamations ({messages.length})
-            </button>
-            <button type="button" className={`admin-tab-btn ${adminTab === 'roles' ? 'active' : ''}`} onClick={() => setAdminTab('roles')}>
-              <i className="fa-solid fa-users-gear" /> Gestion des Rôles
-            </button>
-            <button type="button" className={`admin-tab-btn ${adminTab === 'config' ? 'active' : ''}`} onClick={() => setAdminTab('config')}>
-              <i className="fa-solid fa-sliders" /> Paramètres & Supabase
-            </button>
-          </div>
+          {/* Menu Mobile Déroulant */}
+          {mobileMenuOpen && (
+            <div className="mobile-menu" id="mobile-menu" style={{ display: 'flex' }}>
+              <a href="#" onClick={(e) => { e.preventDefault(); setActivePage('accueil'); setMobileMenuOpen(false); }}>Accueil</a>
+              <a href="#" onClick={(e) => { e.preventDefault(); setActivePage('boutique'); setFilterGenre(''); setMobileMenuOpen(false); }}>Boutique</a>
+              <a href="#" onClick={(e) => { e.preventDefault(); setActivePage('hommes'); setMobileMenuOpen(false); }}>Hommes</a>
+              <a href="#" onClick={(e) => { e.preventDefault(); setActivePage('femmes'); setMobileMenuOpen(false); }}>Femmes</a>
+              <a href="#" onClick={(e) => { e.preventDefault(); setActivePage('apropos'); setMobileMenuOpen(false); }}>À propos</a>
+              <a href="#" onClick={(e) => { e.preventDefault(); setActivePage('contact'); setMobileMenuOpen(false); }}>Contact & Réclamations</a>
+              <a href="#" onClick={(e) => { e.preventDefault(); if (user) setActivePage('compte'); else setAuthModalOpen(true); setMobileMenuOpen(false); }}>
+                <i className="fa-solid fa-user" /> {user ? user.name : 'Mon Compte / Connexion'}
+              </a>
+              <a href="#" onClick={(e) => { e.preventDefault(); setActivePage('admin'); setMobileMenuOpen(false); }} style={{ color: '#dfba5c' }}>
+                <i className="fa-solid fa-shield-halved" /> Panneau d'Administration
+              </a>
+            </div>
+          )}
 
-          {/* TAB 1 : DASHBOARD STATS */}
-          {adminTab === 'dashboard' && (
-            <div className="admin-content-section">
-              <div className="stats-cards-grid">
-                <div className="stat-card">
-                  <div className="stat-label">Commandes Totales</div>
-                  <div className="stat-val">{orders.length}</div>
-                </div>
-                <div className="stat-card">
-                  <div className="stat-label">Chiffre d'Affaires</div>
-                  <div className="stat-val">{formatPrice(orders.reduce((s, o) => s + (o.total || 0), 0))}</div>
-                </div>
-                <div className="stat-card">
-                  <div className="stat-label">Articles en Catalogue</div>
-                  <div className="stat-val">{products.length}</div>
-                </div>
-                <div className="stat-card">
-                  <div className="stat-label">Réclamations / Messages</div>
-                  <div className="stat-val">{messages.length}</div>
+          {/* Barre de Recherche Dropdown */}
+          {searchOpen && (
+            <div className="search-bar" id="search-bar" style={{ display: 'block' }}>
+              <div className="container" style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                <input
+                  type="text"
+                  id="search-input"
+                  placeholder="Rechercher un t-shirt, une chemise, une robe..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  autoFocus
+                />
+                <button type="button" id="search-close" onClick={() => setSearchOpen(false)}>
+                  <i className="fa-solid fa-xmark" />
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* ═══════════════════════════════════════════════════════════ */}
+          {/* PAGE 1 : ACCUEIL                                            */}
+          {/* ═══════════════════════════════════════════════════════════ */}
+          {activePage === 'accueil' && (
+            <section id="page-accueil" className="page active">
+              {/* Hero Section — Photo Officielle BY_AFRIKA en fond */}
+              <div
+                className="hero-section"
+                style={{
+                  backgroundImage: "url('/hero-banner.jpg')",
+                  backgroundPosition: "center 22%",
+                  backgroundSize: "cover",
+                  backgroundRepeat: "no-repeat"
+                }}
+              >
+                <div className="hero-content">
+                  <h1 className="sr-only">BY_AFRIKA - Portez vos origines avec confiance</h1>
+                  <p className="hero-slogan-bottom">Portez vos origines avec confiance</p>
+                  <div className="hero-buttons">
+                    <button
+                      type="button"
+                      className="btn-homme"
+                      onClick={() => setActivePage('hommes')}
+                    >
+                      <span>Collection Homme</span>
+                      <i className="fa-solid fa-arrow-right" />
+                    </button>
+                    <button
+                      type="button"
+                      className="btn-femme"
+                      onClick={() => setActivePage('femmes')}
+                    >
+                      <span>Collection Femme</span>
+                      <i className="fa-solid fa-arrow-right" />
+                    </button>
+                  </div>
                 </div>
               </div>
 
-              <div className="admin-recent-block" style={{ marginTop: '2rem' }}>
-                <h3>Dernières Commandes</h3>
-                {orders.length === 0 ? (
-                  <p className="empty-state">Aucune commande pour le moment.</p>
-                ) : (
-                  <div className="table-wrapper">
+              {/* Grand Logo Typographique Stylisé Monumental */}
+              <div className="brand-monumental-section">
+                <div className="container">
+                  <div className="brand-monumental-svg-wrap">
+                    <svg viewBox="0 0 1000 120" width="100%" height="auto" preserveAspectRatio="xMidYMid meet" aria-label="BY_AFRIKA" role="img">
+                      <text x="500" y="65" textAnchor="middle" dominantBaseline="middle" className="brand-monumental-svg-text">
+                        BY_AFRIKA
+                      </text>
+                    </svg>
+                  </div>
+                  <div className="brand-monumental-line" />
+                </div>
+              </div>
+
+              {/* Produits en Vedette — En-tête Éditorial */}
+              <div className="featured-products">
+                <div className="container">
+                  <div className="editorial-collection-header">
+                    <span className="editorial-eyebrow">NOS COLLECTIONS</span>
+                    <h2 className="editorial-cursive-title">By Afrika</h2>
+                  </div>
+                  <div className="products-grid" id="featured-grid">
+                    {featuredProducts.map(p => renderProductCard(p))}
+                  </div>
+                </div>
+              </div>
+
+              {/* Section Typographique Streetwear au Milieu des Produits */}
+              <section className="brand-streetwear-statement">
+                <div className="container">
+                  <div className="statement-wrapper">
+                    <span className="statement-subtitle">BY_AFRIKA STORE</span>
+                    <div className="statement-double-divider" />
+                    <div className="statement-wolof-block">
+                      <h3 className="statement-wolof-line">YEEWU NAÑ</h3>
+                      <h3 className="statement-wolof-line">UBBI NAÑ</h3>
+                      <h3 className="statement-wolof-line">ÑËWLEEN</h3>
+                    </div>
+                    <p className="statement-tagline">Portez vos origines avec confiance • Prêt-à-porter sénégalais</p>
+                    <div className="statement-actions">
+                      <button
+                        type="button"
+                        className="btn-statement-explore"
+                        onClick={() => { setActivePage('boutique'); setFilterGenre(''); }}
+                      >
+                        <span>Découvrir Toute la Boutique</span>
+                        <i className="fa-solid fa-arrow-right" />
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </section>
+
+              {/* Valeurs de la marque */}
+              <div className="brand-values">
+                <div className="container">
+                  <div className="values-grid">
+                    <div className="value-card">
+                      <i className="fa-solid fa-medal" />
+                      <h3>Qualité Premium</h3>
+                      <p>Des matériaux soigneusement sélectionnés pour un confort et une durabilité exceptionnels.</p>
+                    </div>
+                    <div className="value-card">
+                      <i className="fa-solid fa-globe-africa" />
+                      <h3>Fierté Africaine</h3>
+                      <p>Chaque pièce célèbre la richesse culturelle et l'héritage du continent africain.</p>
+                    </div>
+                    <div className="value-card">
+                      <i className="fa-solid fa-truck-fast" />
+                      <h3>Livraison Rapide</h3>
+                      <p>Recevez vos commandes rapidement partout au Sénégal. Paiement à la livraison.</p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </section>
+          )}
+
+          {/* ═══════════════════════════════════════════════════════════ */}
+          {/* PAGE 2 : BOUTIQUE (TOUT LE CATALOGUE AVEC FILTRES)         */}
+          {/* ═══════════════════════════════════════════════════════════ */}
+          {activePage === 'boutique' && (
+            <section id="page-boutique" className="page active">
+              <div className="container">
+                <div className="boutique-header">
+                  <h1>Boutique</h1>
+                  <div className="filters-bar">
+                    <div className="filter-group">
+                      <label htmlFor="filter-genre">Genre</label>
+                      <select
+                        id="filter-genre"
+                        className="form-input"
+                        value={filterGenre}
+                        onChange={e => setFilterGenre(e.target.value)}
+                      >
+                        <option value="">Tous</option>
+                        <option value="Homme">Homme</option>
+                        <option value="Femme">Femme</option>
+                        <option value="Unisexe">Unisexe</option>
+                      </select>
+                    </div>
+                    <div className="filter-group">
+                      <label htmlFor="filter-category">Catégorie</label>
+                      <select
+                        id="filter-category"
+                        className="form-input"
+                        value={filterCategory}
+                        onChange={e => setFilterCategory(e.target.value)}
+                      >
+                        <option value="">Toutes</option>
+                        {config.categories?.map(c => (
+                          <option key={c} value={c}>{c}</option>
+                        ))}
+                      </select>
+                    </div>
+                    <div className="filter-group">
+                      <label htmlFor="filter-search">Recherche</label>
+                      <input
+                        type="text"
+                        id="filter-search"
+                        className="form-input"
+                        placeholder="Nom du vêtement..."
+                        value={searchQuery}
+                        onChange={e => setSearchQuery(e.target.value)}
+                      />
+                    </div>
+                  </div>
+                </div>
+                <div className="products-grid" id="boutique-grid">
+                  {getFilteredProducts().map(p => renderProductCard(p))}
+                </div>
+              </div>
+            </section>
+          )}
+
+          {/* ═══════════════════════════════════════════════════════════ */}
+          {/* PAGE 3 : HOMMES                                             */}
+          {/* ═══════════════════════════════════════════════════════════ */}
+          {activePage === 'hommes' && (
+            <section id="page-hommes" className="page active">
+              <div className="container">
+                <div className="boutique-header">
+                  <h1>Collection Homme</h1>
+                </div>
+                <div className="products-grid" id="hommes-grid">
+                  {products.filter(p => p.genre === 'Homme' || p.genre === 'Unisexe').map(p => renderProductCard(p))}
+                </div>
+              </div>
+            </section>
+          )}
+
+          {/* ═══════════════════════════════════════════════════════════ */}
+          {/* PAGE 4 : FEMMES                                             */}
+          {/* ═══════════════════════════════════════════════════════════ */}
+          {activePage === 'femmes' && (
+            <section id="page-femmes" className="page active">
+              <div className="container">
+                <div className="boutique-header">
+                  <h1>Collection Femme</h1>
+                </div>
+                <div className="products-grid" id="femmes-grid">
+                  {products.filter(p => p.genre === 'Femme' || p.genre === 'Unisexe').map(p => renderProductCard(p))}
+                </div>
+              </div>
+            </section>
+          )}
+
+          {/* ═══════════════════════════════════════════════════════════ */}
+          {/* PAGE 5 : À PROPOS                                           */}
+          {/* ═══════════════════════════════════════════════════════════ */}
+          {activePage === 'apropos' && (
+            <section id="page-apropos" className="page active">
+              <div className="container">
+                <div className="apropos-hero">
+                  <h1>À propos de BY_AFRIKA</h1>
+                  <p>Un projet pour la fierté Africaine — porté par la passion et la créativité de Dakar.</p>
+                </div>
+                <div className="apropos-content">
+                  <div className="apropos-section">
+                    <h2><i className="fa-solid fa-book-open" /> Notre Histoire</h2>
+                    <p>
+                      BY_AFRIKA est né d'un rêve simple mais puissant : créer une marque de vêtements qui célèbre l'identité
+                      africaine avec style et modernité. Fondée à Dakar, au cœur du Sénégal, notre marque fusionne les racines
+                      profondes du continent avec les tendances contemporaines du streetwear et de l'élégance internationale.
+                    </p>
+                    <p>
+                      Chaque pièce que nous créons raconte une histoire — celle d'un continent riche en couleurs, en traditions
+                      et en résilience. Porter BY_AFRIKA, c'est affirmer sa fierté d'être Africain au quotidien.
+                    </p>
+                  </div>
+                  <div className="apropos-section">
+                    <h2><i className="fa-solid fa-bullseye" /> Notre Mission</h2>
+                    <p>
+                      Notre mission est de rendre la mode africaine haut de gamme accessible et désirable. Nous nous engageons
+                      à concevoir des pièces de prestige avec des matières nobles, durables et confectionnées dans les règles de l'art.
+                    </p>
+                  </div>
+                </div>
+              </div>
+            </section>
+          )}
+
+          {/* ═══════════════════════════════════════════════════════════ */}
+          {/* PAGE 6 : CONTACT & RÉCLAMATIONS                             */}
+          {/* ═══════════════════════════════════════════════════════════ */}
+          {activePage === 'contact' && (
+            <section id="page-contact" className="page active">
+              <div className="container">
+                <div className="contact-layout">
+                  <div className="contact-info">
+                    <h1>Contactez-nous</h1>
+                    <p>Une question sur une commande, un modèle ou un conseil taille ? Notre équipe est à votre disposition.</p>
+                    <div className="contact-details">
+                      <div className="contact-item">
+                        <i className="fa-solid fa-location-dot" />
+                        <div>
+                          <strong>Adresse</strong>
+                          <p>{config.address || 'Dakar, Sénégal'}</p>
+                        </div>
+                      </div>
+                      <div className="contact-item">
+                        <i className="fa-solid fa-phone" />
+                        <div>
+                          <strong>Téléphone</strong>
+                          <p>{config.phone || '+221 77 000 00 00'}</p>
+                        </div>
+                      </div>
+                      <div className="contact-item">
+                        <i className="fa-solid fa-envelope" />
+                        <div>
+                          <strong>Email</strong>
+                          <p>{config.email || 'contact@byafrica.com'}</p>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="contact-form-card">
+                    <h2>Envoyer un message / Réclamation</h2>
+                    <p style={{ fontSize: '0.86rem', color: 'var(--text-secondary)', marginBottom: '18px', lineHeight: 1.4 }}>
+                      Remplissez ce formulaire et nous vous répondrons directement par WhatsApp ou email.
+                    </p>
+                    <form className="form-stack" onSubmit={handleContactSubmit}>
+                      <div className="form-grid">
+                        <div className="form-group">
+                          <label className="form-label">Votre nom complet <span style={{ color: '#ef4444' }}>*</span></label>
+                          <input type="text" name="name" className="form-input" placeholder="Ex: Moussa Diop" required />
+                        </div>
+                        <div className="form-group">
+                          <label className="form-label">Téléphone / WhatsApp <span style={{ color: '#ef4444' }}>*</span></label>
+                          <input type="tel" name="phone" className="form-input" placeholder="+221 7X XXX XX XX" required />
+                        </div>
+                        <div className="form-group">
+                          <label className="form-label">Email (optionnel)</label>
+                          <input type="email" name="email" className="form-input" placeholder="votre.email@gmail.com" />
+                        </div>
+                        <div className="form-group">
+                          <label className="form-label">Motif de la demande</label>
+                          <select name="type" className="form-input">
+                            <option value="Question Produit">Question sur un produit / taille</option>
+                            <option value="Réclamation Commande">Réclamation sur une commande</option>
+                            <option value="Livraison">Question sur la livraison</option>
+                            <option value="Autre">Autre demande</option>
+                          </select>
+                        </div>
+                      </div>
+                      <div className="form-group full-width">
+                        <label className="form-label">N° de Commande (le cas échéant)</label>
+                        <input type="text" name="orderId" className="form-input" placeholder="Ex: CMD-1795308289504" />
+                      </div>
+                      <div className="form-group full-width">
+                        <label className="form-label">Votre message <span style={{ color: '#ef4444' }}>*</span></label>
+                        <textarea name="message" className="form-input" rows={3} placeholder="Expliquez-nous votre demande..." required />
+                      </div>
+                      <button type="submit" className="btn btn-primary" style={{ alignSelf: 'flex-start' }}>
+                        <i className="fa-solid fa-paper-plane" /> Envoyer le message
+                      </button>
+                    </form>
+                  </div>
+                </div>
+              </div>
+            </section>
+          )}
+
+          {/* ═══════════════════════════════════════════════════════════ */}
+          {/* PAGE 7 : ESPACE CLIENT                                      */}
+          {/* ═══════════════════════════════════════════════════════════ */}
+          {activePage === 'compte' && (
+            <section id="page-compte" className="page active">
+              <div className="container">
+                <div className="compte-header-row" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24, paddingBottom: 16, borderBottom: '1px solid var(--border-color)' }}>
+                  <div>
+                    <h1 style={{ marginBottom: 4, fontSize: '1.8rem' }}>Mon Compte</h1>
+                    <p style={{ color: 'var(--text-secondary)', fontSize: '0.95rem' }}>
+                      Bonjour <strong>{user?.name || 'Client'}</strong>, bienvenue dans votre espace personnel.
+                    </p>
+                  </div>
+                  <button type="button" className="btn btn-outline" onClick={handleLogout} style={{ color: '#ef4444', borderColor: 'rgba(239,68,68,0.5)' }}>
+                    <i className="fa-solid fa-arrow-right-from-bracket" /> Déconnexion
+                  </button>
+                </div>
+
+                <div className="compte-content">
+                  <h2>Historique de mes commandes</h2>
+                  {orders.filter(o => o.customer?.email === user?.email || o.customer?.phone === user?.phone).length === 0 ? (
+                    <p className="empty-state">Vous n'avez pas encore passé de commande avec ces coordonnées.</p>
+                  ) : (
+                    <div className="orders-list">
+                      {orders.filter(o => o.customer?.email === user?.email || o.customer?.phone === user?.phone).map(o => (
+                        <div key={o.id} className="order-card" style={{ background: '#fff', border: '1px solid var(--border-color)', padding: 20, borderRadius: 12, marginBottom: 16 }}>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+                            <strong>N° {o.id}</strong>
+                            <span className="badge-type">{o.status}</span>
+                          </div>
+                          <p style={{ fontSize: '0.88rem', color: '#666' }}>Date : {new Date(o.createdAt).toLocaleDateString('fr-FR')}</p>
+                          <p style={{ fontSize: '0.88rem', color: '#666' }}>Mode : {o.deliveryType}</p>
+                          <p style={{ fontWeight: 700, color: '#111', marginTop: 8 }}>Total : {formatPrice(o.total)}</p>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+            </section>
+          )}
+
+          {/* Pied de Page Officiel */}
+          <footer className="site-footer">
+            <div className="container">
+              <div className="footer-grid">
+                <div className="footer-col">
+                  <div className="brand-logo" style={{ marginBottom: 12 }}>
+                    <img src="/logo.jpg" alt="Logo" className="brand-logo-img" />
+                    <span className="brand-logo-text">BY_AFRIKA</span>
+                  </div>
+                  <p style={{ fontSize: '0.88rem', color: 'var(--text-secondary)', lineHeight: 1.5 }}>
+                    Maison de prêt-à-porter célébrant l'élégance, la culture et l'authenticité africaine.
+                  </p>
+                </div>
+                <div className="footer-col">
+                  <h4>Navigation</h4>
+                  <ul className="footer-links">
+                    <li><a href="#" onClick={(e) => { e.preventDefault(); setActivePage('accueil'); }}>Accueil</a></li>
+                    <li><a href="#" onClick={(e) => { e.preventDefault(); setActivePage('boutique'); }}>Toute la Boutique</a></li>
+                    <li><a href="#" onClick={(e) => { e.preventDefault(); setActivePage('hommes'); }}>Collection Homme</a></li>
+                    <li><a href="#" onClick={(e) => { e.preventDefault(); setActivePage('femmes'); }}>Collection Femme</a></li>
+                  </ul>
+                </div>
+                <div className="footer-col">
+                  <h4>Contact</h4>
+                  <ul className="footer-links">
+                    <li><i className="fa-solid fa-location-dot" /> {config.address || 'Dakar, Sénégal'}</li>
+                    <li><i className="fa-solid fa-phone" /> {config.phone || '+221 77 000 00 00'}</li>
+                    <li><i className="fa-solid fa-envelope" /> {config.email || 'contact@byafrica.com'}</li>
+                    <li><a href="#" onClick={(e) => { e.preventDefault(); setActivePage('contact'); }}>Réclamations & SAV</a></li>
+                  </ul>
+                </div>
+              </div>
+
+              <div className="footer-bottom">
+                <p>© 2026 BY_AFRIKA. Tous droits réservés. Prêt-à-porter masculin & féminin au Sénégal.</p>
+              </div>
+            </div>
+          </footer>
+        </div>
+      ) : (
+        /* ============================================================ */
+        /* VUE 2 : TABLEAU DE BORD ADMINISTRATEUR                        */
+        /* ============================================================ */
+        <div id="admin-view">
+          <div className="admin-container">
+            {/* Sidebar Admin */}
+            <aside className="admin-sidebar" style={{ display: 'block' }}>
+              <div className="admin-sidebar-header">
+                <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                  <img src="/logo.jpg" alt="BY_AFRIKA" className="admin-logo" />
+                  <h3>BY_AFRIKA Admin</h3>
+                </div>
+              </div>
+              <nav className="admin-nav">
+                <a href="#" className={`admin-nav-link ${adminTab === 'dashboard' ? 'active' : ''}`} onClick={(e) => { e.preventDefault(); setAdminTab('dashboard'); }}>
+                  <i className="fa-solid fa-chart-line" /> Tableau de bord
+                </a>
+                <a href="#" className={`admin-nav-link ${adminTab === 'produits' ? 'active' : ''}`} onClick={(e) => { e.preventDefault(); setAdminTab('produits'); }}>
+                  <i className="fa-solid fa-shirt" /> Produits ({products.length})
+                </a>
+                <a href="#" className={`admin-nav-link ${adminTab === 'commandes' ? 'active' : ''}`} onClick={(e) => { e.preventDefault(); setAdminTab('commandes'); }}>
+                  <i className="fa-solid fa-box" /> Commandes ({orders.length})
+                </a>
+                <a href="#" className={`admin-nav-link ${adminTab === 'messages' ? 'active' : ''}`} onClick={(e) => { e.preventDefault(); setAdminTab('messages'); }}>
+                  <i className="fa-solid fa-headset" /> Messages & Réclamations ({messages.length})
+                </a>
+                <a href="#" className={`admin-nav-link ${adminTab === 'config' ? 'active' : ''}`} onClick={(e) => { e.preventDefault(); setAdminTab('config'); }}>
+                  <i className="fa-solid fa-gear" /> Configuration
+                </a>
+                <a href="#" className="admin-nav-link" onClick={(e) => { e.preventDefault(); setActivePage('accueil'); }} style={{ color: 'var(--gold-accent)', marginTop: 24, border: '1px solid rgba(196,154,38,0.3)', borderRadius: 6 }}>
+                  <i className="fa-solid fa-arrow-left" /> Retour à la Boutique
+                </a>
+              </nav>
+            </aside>
+
+            {/* Contenu Principal Admin */}
+            <main className="admin-main">
+              <div className="admin-desktop-topbar">
+                <div className="admin-topbar-info">
+                  <span className="admin-topbar-badge"><i className="fa-solid fa-shield-halved" /> Administration</span>
+                  <span className="admin-topbar-user">Connecté : <strong>Direction BY_AFRIKA</strong></span>
+                </div>
+                <div className="admin-topbar-actions">
+                  <button type="button" className="btn btn-outline" onClick={() => setActivePage('accueil')}>
+                    <i className="fa-solid fa-arrow-left" /> Voir la Boutique
+                  </button>
+                  <button type="button" className="btn btn-outline" onClick={handleLogout} style={{ color: '#ef4444', borderColor: 'rgba(239,68,68,0.5)' }}>
+                    <i className="fa-solid fa-arrow-right-from-bracket" /> Déconnexion
+                  </button>
+                </div>
+              </div>
+
+              {/* Navigation chips mobile admin */}
+              <nav className="admin-mobile-chips-nav">
+                <button type="button" className={`admin-chip-btn ${adminTab === 'dashboard' ? 'active' : ''}`} onClick={() => setAdminTab('dashboard')}><i className="fa-solid fa-chart-line" /> Dashboard</button>
+                <button type="button" className={`admin-chip-btn ${adminTab === 'produits' ? 'active' : ''}`} onClick={() => setAdminTab('produits')}><i className="fa-solid fa-shirt" /> Produits</button>
+                <button type="button" className={`admin-chip-btn ${adminTab === 'commandes' ? 'active' : ''}`} onClick={() => setAdminTab('commandes')}><i className="fa-solid fa-box" /> Commandes</button>
+                <button type="button" className={`admin-chip-btn ${adminTab === 'messages' ? 'active' : ''}`} onClick={() => setAdminTab('messages')}><i className="fa-solid fa-headset" /> Messages</button>
+                <button type="button" className={`admin-chip-btn ${adminTab === 'config' ? 'active' : ''}`} onClick={() => setAdminTab('config')}><i className="fa-solid fa-gear" /> Config</button>
+              </nav>
+
+              {/* TAB : DASHBOARD */}
+              {adminTab === 'dashboard' && (
+                <div className="admin-section active">
+                  <h1>Tableau de bord</h1>
+                  <div className="admin-stats">
+                    <div className="stat-card">
+                      <i className="fa-solid fa-box" />
+                      <div className="stat-info">
+                        <h3>{orders.length}</h3>
+                        <p>Commandes</p>
+                      </div>
+                    </div>
+                    <div className="stat-card">
+                      <i className="fa-solid fa-coins" />
+                      <div className="stat-info">
+                        <h3>{formatPrice(orders.reduce((s, o) => s + (o.total || 0), 0))}</h3>
+                        <p>Chiffre d'Affaires</p>
+                      </div>
+                    </div>
+                    <div className="stat-card">
+                      <i className="fa-solid fa-shirt" />
+                      <div className="stat-info">
+                        <h3>{products.length}</h3>
+                        <p>Articles</p>
+                      </div>
+                    </div>
+                    <div className="stat-card">
+                      <i className="fa-solid fa-headset" />
+                      <div className="stat-info">
+                        <h3>{messages.length}</h3>
+                        <p>Réclamations</p>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* TAB : PRODUITS */}
+              {adminTab === 'produits' && (
+                <div className="admin-section active">
+                  <div className="admin-section-header">
+                    <h2>Gestion du Catalogue ({products.length})</h2>
+                    <button type="button" className="btn btn-primary" onClick={() => { setEditingProduct(null); setShowProductFormModal(true); }}>
+                      <i className="fa-solid fa-plus" /> Ajouter un Vêtement
+                    </button>
+                  </div>
+                  <div className="admin-table-wrapper">
                     <table className="admin-table">
                       <thead>
                         <tr>
-                          <th>Numéro</th>
-                          <th>Client</th>
-                          <th>Mode</th>
-                          <th>Total</th>
-                          <th>Statut</th>
-                          <th>Action</th>
+                          <th>Image</th>
+                          <th>Article</th>
+                          <th>Genre</th>
+                          <th>Catégorie</th>
+                          <th>Prix</th>
+                          <th>Stock</th>
+                          <th>Actions</th>
                         </tr>
                       </thead>
                       <tbody>
-                        {orders.slice(0, 5).map(o => (
-                          <tr key={o.id}>
-                            <td><strong>{o.id}</strong></td>
-                            <td>{o.customer?.name} ({o.customer?.phone})</td>
-                            <td>{o.deliveryType}</td>
-                            <td><strong style={{ color: '#d4af37' }}>{formatPrice(o.total)}</strong></td>
+                        {products.map(p => (
+                          <tr key={p.id}>
                             <td>
-                              <select
-                                value={o.status}
-                                onChange={e => handleUpdateOrderStatus(o.id, e.target.value)}
-                                className="status-select"
-                              >
-                                <option value="Reçue">Reçue</option>
-                                <option value="Validée">Validée</option>
-                                <option value="En préparation">En préparation</option>
-                                <option value="En livraison">En livraison</option>
-                                <option value="Livrée">Livrée</option>
-                                <option value="Annulée">Annulée</option>
-                              </select>
+                              <img src={p.image.startsWith('/') ? p.image : `/${p.image}`} alt={p.name} style={{ width: 44, height: 44, borderRadius: 6, objectFit: 'cover' }} />
                             </td>
+                            <td><strong>{p.name}</strong></td>
+                            <td><span className="badge-type">{p.genre}</span></td>
+                            <td>{p.category}</td>
+                            <td><strong style={{ color: '#c49a26' }}>{formatPrice(p.price)}</strong></td>
+                            <td>{p.stock} pcs</td>
                             <td>
-                              <button type="button" className="btn btn-sm btn-outline" onClick={() => setSelectedAdminOrder(o)}>Détails</button>
+                              <button type="button" className="btn btn-sm btn-outline" style={{ marginRight: 6 }} onClick={() => { setEditingProduct(p); setShowProductFormModal(true); }}>Modifier</button>
+                              <button type="button" className="btn btn-sm btn-outline" style={{ color: '#ef4444' }} onClick={() => handleDeleteProduct(p.id)}>Supprimer</button>
                             </td>
                           </tr>
                         ))}
                       </tbody>
                     </table>
                   </div>
-                )}
-              </div>
-            </div>
-          )}
-
-          {/* TAB 2 : GESTION DES PRODUITS */}
-          {adminTab === 'produits' && (
-            <div className="admin-content-section">
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem', flexWrap: 'wrap', gap: '1rem' }}>
-                <h2>Catalogue des Produits ({products.length})</h2>
-                <button
-                  type="button"
-                  className="btn btn-primary"
-                  onClick={() => { setEditingProduct(null); setProductFormOpen(true); }}
-                >
-                  <i className="fa-solid fa-plus" /> Ajouter un Vêtement
-                </button>
-              </div>
-
-              <div className="table-wrapper">
-                <table className="admin-table">
-                  <thead>
-                    <tr>
-                      <th>Image</th>
-                      <th>Nom</th>
-                      <th>Catégorie</th>
-                      <th>Genre</th>
-                      <th>Prix</th>
-                      <th>Stock</th>
-                      <th>Actions</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {products.map(p => (
-                      <tr key={p.id}>
-                        <td><img src={p.image.startsWith('http') ? p.image : `/${p.image}`} alt={p.name} className="table-thumb" /></td>
-                        <td><strong>{p.name}</strong></td>
-                        <td>{p.category}</td>
-                        <td>{p.genre}</td>
-                        <td><strong>{formatPrice(p.price)}</strong></td>
-                        <td>
-                          <span className={`stock-badge ${p.stock > 5 ? 'in-stock' : 'low-stock'}`}>
-                            {p.stock} en stock
-                          </span>
-                        </td>
-                        <td>
-                          <div style={{ display: 'flex', gap: '6px' }}>
-                            <button
-                              type="button"
-                              className="btn btn-sm btn-outline"
-                              onClick={() => { setEditingProduct(p); setProductFormOpen(true); }}
-                              title="Modifier"
-                            >
-                              <i className="fa-solid fa-pen" />
-                            </button>
-                            <button
-                              type="button"
-                              className="btn btn-sm btn-outline"
-                              style={{ color: '#ef4444' }}
-                              onClick={() => handleDeleteProduct(p.id)}
-                              title="Supprimer"
-                            >
-                              <i className="fa-solid fa-trash" />
-                            </button>
-                          </div>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          )}
-
-          {/* TAB 3 : COMMANDES */}
-          {adminTab === 'commandes' && (
-            <div className="admin-content-section">
-              <h2>Toutes les Commandes ({orders.length})</h2>
-              {orders.length === 0 ? (
-                <p className="empty-state">Aucune commande enregistrée.</p>
-              ) : (
-                <div className="table-wrapper">
-                  <table className="admin-table">
-                    <thead>
-                      <tr>
-                        <th>Date</th>
-                        <th>N° Commande</th>
-                        <th>Client</th>
-                        <th>Articles</th>
-                        <th>Mode de Réception</th>
-                        <th>Montant</th>
-                        <th>Statut</th>
-                        <th>Action</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {orders.map(o => (
-                        <tr key={o.id}>
-                          <td>{new Date(o.createdAt).toLocaleDateString('fr-FR')}</td>
-                          <td><strong>{o.id}</strong></td>
-                          <td>
-                            <strong>{o.customer?.name}</strong>
-                            <div style={{ fontSize: '0.8rem', color: '#888' }}>{o.customer?.phone}</div>
-                          </td>
-                          <td>{o.items?.length || 0} article(s)</td>
-                          <td>{o.deliveryType}</td>
-                          <td><strong style={{ color: '#d4af37' }}>{formatPrice(o.total)}</strong></td>
-                          <td>
-                            <select
-                              value={o.status}
-                              onChange={e => handleUpdateOrderStatus(o.id, e.target.value)}
-                              className="status-select"
-                            >
-                              <option value="Reçue">Reçue</option>
-                              <option value="Validée">Validée</option>
-                              <option value="En préparation">En préparation</option>
-                              <option value="En livraison">En livraison</option>
-                              <option value="Livrée">Livrée</option>
-                              <option value="Annulée">Annulée</option>
-                            </select>
-                          </td>
-                          <td>
-                            <button type="button" className="btn btn-sm btn-outline" onClick={() => setSelectedAdminOrder(o)}>Détails</button>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
                 </div>
               )}
-            </div>
-          )}
 
-          {/* TAB 4 : MESSAGES & RÉCLAMATIONS */}
-          {adminTab === 'messages' && (
-            <div className="admin-content-section">
-              <h2>Messages et Réclamations ({messages.length})</h2>
-              {messages.length === 0 ? (
-                <p className="empty-state">Aucune réclamation enregistrée.</p>
-              ) : (
-                <div className="table-wrapper">
-                  <table className="admin-table">
-                    <thead>
-                      <tr>
-                        <th>Date</th>
-                        <th>Client</th>
-                        <th>Contact</th>
-                        <th>Type</th>
-                        <th>Objet</th>
-                        <th>Message</th>
-                        <th>WhatsApp</th>
-                        <th>Action</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {messages.map(m => (
-                        <tr key={m.id}>
-                          <td>{new Date(m.createdAt).toLocaleDateString('fr-FR')}</td>
-                          <td><strong>{m.name}</strong></td>
-                          <td>{m.phone || m.email}</td>
-                          <td><span className="badge-type">{m.type}</span></td>
-                          <td>{m.subject}</td>
-                          <td style={{ maxWidth: '280px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{m.message}</td>
-                          <td>
-                            {m.phone ? (
-                              <a
-                                href={`https://wa.me/${m.phone.replace(/[^0-9]/g, '')}`}
-                                target="_blank"
-                                rel="noreferrer"
-                                className="btn btn-sm btn-outline"
-                                style={{ color: '#25D366', borderColor: '#25D366' }}
-                              >
-                                <i className="fa-brands fa-whatsapp" /> Répondre
-                              </a>
-                            ) : '-'}
-                          </td>
-                          <td>
-                            <button
-                              type="button"
-                              className="btn btn-sm btn-outline"
-                              onClick={() => setSelectedAdminMessage(m)}
-                            >
-                              Consulter
-                            </button>
-                          </td>
+              {/* TAB : COMMANDES */}
+              {adminTab === 'commandes' && (
+                <div className="admin-section active">
+                  <h2>Gestion des Commandes Clients ({orders.length})</h2>
+                  <div className="admin-table-wrapper">
+                    <table className="admin-table">
+                      <thead>
+                        <tr>
+                          <th>N° Commande</th>
+                          <th>Date</th>
+                          <th>Client</th>
+                          <th>Téléphone</th>
+                          <th>Mode</th>
+                          <th>Total</th>
+                          <th>Statut</th>
                         </tr>
-                      ))}
-                    </tbody>
-                  </table>
+                      </thead>
+                      <tbody>
+                        {orders.length === 0 ? (
+                          <tr><td colSpan={7} style={{ textAlign: 'center', padding: 30 }}>Aucune commande enregistrée pour le moment.</td></tr>
+                        ) : (
+                          orders.map(o => (
+                            <tr key={o.id}>
+                              <td><strong>{o.id}</strong></td>
+                              <td>{new Date(o.createdAt).toLocaleDateString('fr-FR')}</td>
+                              <td>{o.customer?.name}</td>
+                              <td>{o.customer?.phone}</td>
+                              <td>{o.deliveryType}</td>
+                              <td><strong style={{ color: '#c49a26' }}>{formatPrice(o.total)}</strong></td>
+                              <td>
+                                <select
+                                  value={o.status}
+                                  onChange={async (e) => {
+                                    const val = e.target.value;
+                                    setOrders(prev => prev.map(item => item.id === o.id ? { ...item, status: val } : item));
+                                    try {
+                                      await supabase.from('orders').update({ status: val }).eq('id', o.id);
+                                    } catch (err) {}
+                                    showToast(`Commande ${o.id} passée à : ${val}`);
+                                  }}
+                                  className="form-input"
+                                  style={{ padding: '4px 8px', fontSize: '0.85rem' }}
+                                >
+                                  <option value="Reçue">Reçue</option>
+                                  <option value="En préparation">En préparation</option>
+                                  <option value="En livraison">En livraison</option>
+                                  <option value="Livrée">Livrée</option>
+                                  <option value="Annulée">Annulée</option>
+                                </select>
+                              </td>
+                            </tr>
+                          ))
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
                 </div>
               )}
-            </div>
-          )}
 
-          {/* TAB 5 : GESTION DES RÔLES */}
-          {adminTab === 'roles' && (
-            <div className="admin-content-section">
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem', flexWrap: 'wrap', gap: '1rem' }}>
-                <h2>Gestion des Rôles & Accès</h2>
-                <button type="button" className="btn btn-primary" onClick={() => setAddUserModalOpen(true)}>
-                  <i className="fa-solid fa-user-plus" /> Ajouter un Membre
-                </button>
-              </div>
-
-              <div className="table-wrapper">
-                <table className="admin-table">
-                  <thead>
-                    <tr>
-                      <th>Nom</th>
-                      <th>Email</th>
-                      <th>Téléphone</th>
-                      <th>Rôle Actuel</th>
-                      <th>Action</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {usersList.map(u => (
-                      <tr key={u.id}>
-                        <td><strong>{u.name}</strong></td>
-                        <td>{u.email}</td>
-                        <td>{u.phone}</td>
-                        <td>
-                          <span className={`role-badge role-${u.role}`}>
-                            {u.role.toUpperCase()}
-                          </span>
-                        </td>
-                        <td>
-                          <select
-                            value={u.role}
-                            onChange={e => {
-                              const newRole = e.target.value;
-                              setUsersList(prev => prev.map(item => item.id === u.id ? { ...item, role: newRole } : item));
-                              showToast(`Rôle mis à jour pour ${u.name}`);
-                            }}
-                            className="status-select"
-                            disabled={u.email === 'admin@byafrica.com'}
-                          >
-                            <option value="admin">Administrateur</option>
-                            <option value="gestionnaire">Gestionnaire</option>
-                            <option value="livreur">Livreur</option>
-                            <option value="client">Client</option>
-                          </select>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          )}
-
-          {/* TAB 6 : PARAMÈTRES & SUPABASE */}
-          {adminTab === 'config' && (
-            <div className="admin-content-section">
-              <div className="config-box" style={{ border: '1px solid rgba(212,175,55,0.4)', borderRadius: 12, padding: '1.5rem', background: '#121214' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem', flexWrap: 'wrap', gap: '1rem' }}>
-                  <h3 style={{ color: '#d4af37', margin: 0 }}>
-                    <i className="fa-solid fa-database" style={{ marginRight: 8 }} />
-                    Connexion Supabase Cloud
-                  </h3>
-                  <span className={`badge-status ${supabaseStatus.connected ? 'status-green' : 'status-gold'}`}>
-                    {supabaseStatus.connected ? '● Connecté en direct à Supabase' : '● Mode Local Actif'}
-                  </span>
-                </div>
-                <p style="font-size:0.9rem; color:#aaa; margin-bottom:1rem;">
-                  Votre application Next.js interroge directement la base de données <strong>PostgreSQL Supabase</strong> sans passer par un serveur intermédiaire.
-                </p>
-                <div className="form-group" style={{ marginBottom: '1rem' }}>
-                  <label className="form-label">SUPABASE URL</label>
-                  <input type="text" readOnly className="form-input" value="https://vgaifljtaocvnifiyrsg.supabase.co" />
-                </div>
-                <div className="form-group">
-                  <label className="form-label">SUPABASE KEY</label>
-                  <input type="text" readOnly className="form-input" value="sb_publishable_7oHChmVbT7XB7A4FxJNWOA_69FN41xh" />
-                </div>
-              </div>
-            </div>
-          )}
-        </main>
-      ) : (
-        /* ═══════════════════════════════════════════════════════════════
-           VUE 2 : BOUTIQUE CLIENT PUBLIQUE
-           ═══════════════════════════════════════════════════════════════ */
-        <main className="client-main">
-          {/* ── SECTION HERO ── */}
-          {activePage === 'accueil' && (
-            <section className="hero-section">
-              <div className="hero-banner-wrap">
-                <img src="/hero-3d.jpg" alt="Collection BY_AFRIKA" className="hero-banner-image" />
-                <div className="hero-overlay-content">
-                  <h2 className="hero-tagline">PORTEZ VOS ORIGINES AVEC CONFIANCE</h2>
-                  <h1 className="hero-main-title">BY_AFRIKA</h1>
-                  <p className="hero-description">
-                    L'expression suprême de la mode et du streetwear africain contemporain. Élégance intemporelle, matières nobles et créations de prestige.
-                  </p>
-                  <div className="hero-cta-group">
-                    <button
-                      type="button"
-                      className="btn-hero-homme"
-                      onClick={() => { setActivePage('boutique'); setGenderFilter('homme'); }}
-                    >
-                      COLLECTION HOMME →
+              {/* TAB : MESSAGES & RÉCLAMATIONS */}
+              {adminTab === 'messages' && (
+                <div className="admin-section active">
+                  <div className="admin-subtabs-bar">
+                    <button type="button" className={`admin-subtab-btn ${adminSubTab === 'messages' ? 'active' : ''}`} onClick={() => setAdminSubTab('messages')}>
+                      <i className="fa-solid fa-headset" /> Messages & Réclamations
                     </button>
-                    <button
-                      type="button"
-                      className="btn-hero-femme"
-                      onClick={() => { setActivePage('boutique'); setGenderFilter('femme'); }}
-                    >
-                      COLLECTION FEMME →
+                    <button type="button" className={`admin-subtab-btn ${adminSubTab === 'roles' ? 'active' : ''}`} onClick={() => setAdminSubTab('roles')}>
+                      <i className="fa-solid fa-users-gear" /> Gestion des Rôles
                     </button>
                   </div>
-                </div>
-              </div>
-            </section>
-          )}
 
-          {/* ── SECTION CATALOGUE & COLLECTIONS ── */}
-          {(activePage === 'accueil' || activePage === 'boutique') && (
-            <section className="catalog-section" id="collections">
-              <div className="section-header-center">
-                <span className="section-eyebrow">NOS COLLECTIONS</span>
-                <h2 className="section-title">BY AFRIKA</h2>
-                <div className="title-divider-gold" />
-              </div>
-
-              {/* Filtres par Genre */}
-              <div className="filter-chips-row">
-                <button
-                  type="button"
-                  className={`chip-btn ${genderFilter === 'all' ? 'active' : ''}`}
-                  onClick={() => setGenderFilter('all')}
-                >
-                  Tous les modèles
-                </button>
-                <button
-                  type="button"
-                  className={`chip-btn ${genderFilter === 'homme' ? 'active' : ''}`}
-                  onClick={() => setGenderFilter('homme')}
-                >
-                  Homme
-                </button>
-                <button
-                  type="button"
-                  className={`chip-btn ${genderFilter === 'femme' ? 'active' : ''}`}
-                  onClick={() => setGenderFilter('femme')}
-                >
-                  Femme
-                </button>
-                <button
-                  type="button"
-                  className={`chip-btn ${genderFilter === 'unisexe' ? 'active' : ''}`}
-                  onClick={() => setGenderFilter('unisexe')}
-                >
-                  Unisexe
-                </button>
-              </div>
-
-              {/* Filtres par Catégorie */}
-              <div className="category-chips-row">
-                <button
-                  type="button"
-                  className={`cat-pill ${categoryFilter === 'all' ? 'active' : ''}`}
-                  onClick={() => setCategoryFilter('all')}
-                >
-                  Tout
-                </button>
-                {(config.categories || []).map(cat => (
-                  <button
-                    key={cat}
-                    type="button"
-                    className={`cat-pill ${categoryFilter.toLowerCase() === cat.toLowerCase() ? 'active' : ''}`}
-                    onClick={() => setCategoryFilter(prev => prev.toLowerCase() === cat.toLowerCase() ? 'all' : cat)}
-                  >
-                    {cat}
-                  </button>
-                ))}
-              </div>
-
-              {/* Grille de Produits */}
-              {filteredProducts.length === 0 ? (
-                <div className="empty-catalog-state">
-                  <i className="fa-solid fa-shirt" style={{ fontSize: '2.5rem', color: '#666', marginBottom: 12 }} />
-                  <p>Aucun produit ne correspond à ces critères.</p>
-                  <button type="button" className="btn btn-outline" onClick={() => { setGenderFilter('all'); setCategoryFilter('all'); setSearchQuery(''); }}>
-                    Réinitialiser les filtres
-                  </button>
-                </div>
-              ) : (
-                <div className="products-grid">
-                  {filteredProducts.map(p => (
-                    <article key={p.id} className="product-card" onClick={() => setProductModal(p)}>
-                      <div className="card-image-wrap">
-                        <img
-                          src={p.image.startsWith('http') ? p.image : `/${p.image}`}
-                          alt={p.name}
-                          className="card-product-img"
-                          onError={e => { e.currentTarget.src = '/tshirt-byafrika.jpg'; }}
-                        />
-                        {p.featured && <span className="card-badge-gold">POPULAIRE</span>}
-                      </div>
-
-                      <div className="card-content">
-                        <span className="card-category">{p.category} • {p.genre}</span>
-                        <h3 className="card-title">{p.name}</h3>
-                        <p className="card-price">{formatPrice(p.price)}</p>
-
-                        <div className="card-actions">
-                          <button
-                            type="button"
-                            className="btn-card-add"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              addToCart(p, p.sizes?.[0] || 'M', p.colors?.[0] || 'Noir', 1);
-                            }}
-                          >
-                            <i className="fa-solid fa-bag-shopping" /> Ajouter au panier
-                          </button>
-                        </div>
-                      </div>
-                    </article>
-                  ))}
-                </div>
-              )}
-            </section>
-          )}
-
-          {/* ── SECTION À PROPOS ── */}
-          {activePage === 'a-propos' && (
-            <section className="about-section">
-              <div className="about-container">
-                <span className="section-eyebrow">LA MAISON</span>
-                <h1 className="section-title">L'Héritage BY_AFRIKA</h1>
-                <div className="title-divider-gold" />
-                <p className="about-text">
-                  BY_AFRIKA est née d'une vision forte : donner à la jeunesse et à tous les passionnés d'élégance africaine une marque capable de rivaliser avec les plus grandes maisons de mode internationales, tout en portant haut les racines, la culture et la fierté du continent.
-                </p>
-                <p className="about-text">
-                  Chaque pièce, du t-shirt signature aux vestes wax d'apparat, est conçue avec une rigueur absolue dans les coupes, des matières nobles et un confort d'exception.
-                </p>
-              </div>
-            </section>
-          )}
-
-          {/* ── SECTION CONTACT ── */}
-          {activePage === 'contact' && (
-            <section className="contact-section">
-              <div className="contact-container">
-                <span className="section-eyebrow">ASSISTANCE CLIENT</span>
-                <h1 className="section-title">Contact & Réclamations</h1>
-                <div className="title-divider-gold" />
-                <p style={{ textAlign: 'center', color: '#aaa', marginBottom: '2rem' }}>
-                  Une question sur une taille, une commande en cours ou une réclamation ? Remplissez ce formulaire ou écrivez-nous directement sur WhatsApp.
-                </p>
-
-                <form onSubmit={handleContactSubmit} className="contact-form">
-                  <div className="form-group">
-                    <label className="form-label">Votre Nom complet *</label>
-                    <input type="text" className="form-input" required value={contactName} onChange={e => setContactName(e.target.value)} placeholder="Ex: Aminata Diallo" />
-                  </div>
-                  <div className="form-group">
-                    <label className="form-label">Numéro de téléphone ou Email *</label>
-                    <input type="text" className="form-input" required value={contactContact} onChange={e => setContactContact(e.target.value)} placeholder="Ex: +221 77 000 00 00 ou email@..." />
-                  </div>
-                  <div className="form-group">
-                    <label className="form-label">Motif de votre demande</label>
-                    <select className="form-input" value={contactType} onChange={e => setContactType(e.target.value)}>
-                      <option value="Question Produit">Question sur un Vêtement / Taille</option>
-                      <option value="Suivi de Commande">Suivi d'une Commande en cours</option>
-                      <option value="Réclamation Commande">Réclamation / Colis</option>
-                      <option value="Autre Demande">Autre demande générale</option>
-                    </select>
-                  </div>
-                  <div className="form-group">
-                    <label className="form-label">Votre Message *</label>
-                    <textarea rows="4" className="form-input" required value={contactMessage} onChange={e => setContactMessage(e.target.value)} placeholder="Expliquez-nous en détail votre demande..." />
-                  </div>
-                  <button type="submit" className="btn btn-primary" style={{ width: '100%', marginTop: '1rem' }}>
-                    <i className="fa-solid fa-paper-plane" /> Envoyer mon message
-                  </button>
-                </form>
-
-                <div style={{ textAlign: 'center', marginTop: '2rem' }}>
-                  <a
-                    href="https://wa.me/221763177508"
-                    target="_blank"
-                    rel="noreferrer"
-                    className="btn btn-outline"
-                    style={{ borderColor: '#25D366', color: '#25D366' }}
-                  >
-                    <i className="fa-brands fa-whatsapp" /> Nous contacter directement sur WhatsApp
-                  </a>
-                </div>
-              </div>
-            </section>
-          )}
-
-          {/* ── SECTION COMPTE CLIENT ── */}
-          {activePage === 'compte' && user && (
-            <section className="account-section">
-              <div className="account-container">
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2rem', flexWrap: 'wrap', gap: '1rem' }}>
-                  <div>
-                    <h1>Espace Client</h1>
-                    <p style={{ color: '#888' }}>Connecté en tant que <strong>{user.name}</strong> ({user.email})</p>
-                  </div>
-                  <button type="button" className="btn btn-outline" onClick={handleLogout}>
-                    <i className="fa-solid fa-arrow-right-from-bracket" /> Se déconnecter
-                  </button>
-                </div>
-
-                <div className="account-orders-card">
-                  <h3>Historique de vos Commandes</h3>
-                  {orders.length === 0 ? (
-                    <p className="empty-state">Vous n'avez pas encore passé de commande.</p>
-                  ) : (
-                    <div className="table-wrapper">
+                  {adminSubTab === 'messages' ? (
+                    <div className="admin-table-wrapper">
                       <table className="admin-table">
                         <thead>
                           <tr>
-                            <th>N° Commande</th>
-                            <th>Articles</th>
-                            <th>Mode</th>
-                            <th>Total</th>
-                            <th>Statut</th>
-                            <th>Action</th>
+                            <th>Date</th>
+                            <th>Client</th>
+                            <th>Motif</th>
+                            <th>Message</th>
+                            <th>Réponse WhatsApp</th>
                           </tr>
                         </thead>
                         <tbody>
-                          {orders.map(o => (
-                            <tr key={o.id}>
-                              <td><strong>{o.id}</strong></td>
-                              <td>{o.items?.length} article(s)</td>
-                              <td>{o.deliveryType}</td>
-                              <td><strong style={{ color: '#d4af37' }}>{formatPrice(o.total)}</strong></td>
-                              <td><span className={`status-pill status-${(o.status || '').toLowerCase().replace(/ /g, '-')}`}>{o.status}</span></td>
-                              <td>
-                                <button type="button" className="btn btn-sm btn-outline" onClick={() => setReceiptOrder(o)}>
-                                  Reçu
-                                </button>
-                              </td>
-                            </tr>
-                          ))}
+                          {messages.length === 0 ? (
+                            <tr><td colSpan={5} style={{ textAlign: 'center', padding: 30 }}>Aucune réclamation.</td></tr>
+                          ) : (
+                            messages.map(m => (
+                              <tr key={m.id}>
+                                <td>{new Date(m.createdAt).toLocaleDateString('fr-FR')}</td>
+                                <td>
+                                  <strong>{m.name}</strong>
+                                  <div style={{ fontSize: '0.8rem', color: '#666' }}>{m.phone}</div>
+                                </td>
+                                <td><span className="badge-type">{m.type}</span></td>
+                                <td style={{ maxWidth: 300 }}>{m.message}</td>
+                                <td>
+                                  {m.phone && (
+                                    <a
+                                      href={`https://wa.me/${m.phone.replace(/[^0-9]/g, '')}`}
+                                      target="_blank"
+                                      rel="noreferrer"
+                                      className="btn btn-sm btn-outline"
+                                      style={{ color: '#25D366', borderColor: '#25D366' }}
+                                    >
+                                      <i className="fa-brands fa-whatsapp" /> Répondre
+                                    </a>
+                                  )}
+                                </td>
+                              </tr>
+                            ))
+                          )}
                         </tbody>
                       </table>
                     </div>
+                  ) : (
+                    <div>
+                      <div className="admin-section-header">
+                        <h2>Membres de l'équipe et Rôles</h2>
+                        <button type="button" className="btn btn-primary" onClick={() => setShowAddUserModal(true)}>
+                          <i className="fa-solid fa-user-plus" /> Ajouter un Rôle
+                        </button>
+                      </div>
+                      <div className="admin-table-wrapper">
+                        <table className="admin-table">
+                          <thead>
+                            <tr>
+                              <th>Nom</th>
+                              <th>Email</th>
+                              <th>Rôle Actuel</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {usersList.map(u => (
+                              <tr key={u.id}>
+                                <td><strong>{u.name}</strong></td>
+                                <td>{u.email}</td>
+                                <td><span className="badge-type">{u.role}</span></td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
                   )}
                 </div>
-              </div>
-            </section>
-          )}
-        </main>
-      )}
+              )}
 
-      {/* ── FOOTER ── */}
-      <footer className="main-footer">
-        <div className="footer-container">
-          <div className="footer-col">
-            <h3 className="footer-brand">BY_AFRIKA</h3>
-            <p className="footer-desc">Portez vos origines avec confiance. La marque d'élégance et de fierté africaine.</p>
-          </div>
-          <div className="footer-col">
-            <h4>Boutique</h4>
-            <button type="button" className="footer-link" onClick={() => { setActivePage('boutique'); setGenderFilter('homme'); }}>Collection Homme</button>
-            <button type="button" className="footer-link" onClick={() => { setActivePage('boutique'); setGenderFilter('femme'); }}>Collection Femme</button>
-            <button type="button" className="footer-link" onClick={() => { setActivePage('boutique'); setGenderFilter('all'); }}>Nouveautés</button>
-          </div>
-          <div className="footer-col">
-            <h4>Informations</h4>
-            <button type="button" className="footer-link" onClick={() => setActivePage('a-propos')}>À Propos</button>
-            <button type="button" className="footer-link" onClick={() => setActivePage('contact')}>Service Client & WhatsApp</button>
-            <button type="button" className="footer-link" onClick={() => setActivePage('admin')}>Administration</button>
-          </div>
-          <div className="footer-col">
-            <h4>Contact Direct</h4>
-            <p><i className="fa-solid fa-location-dot" /> Dakar, Sénégal</p>
-            <p><i className="fa-solid fa-phone" /> {config.phone || '+221 77 000 00 00'}</p>
-            <p><i className="fa-solid fa-envelope" /> contact@byafrica.com</p>
-          </div>
-        </div>
-        <div className="footer-bottom">
-          <p>© {new Date().getFullYear()} BY_AFRIKA. Tous droits réservés.</p>
-        </div>
-      </footer>
-
-      {/* ═══════════════════════════════════════════════════════════════
-          MODALS & OVERLAYS
-          ═══════════════════════════════════════════════════════════════ */}
-
-      {/* 1. TIROIR DU PANIER */}
-      {cartOpen && (
-        <div className="modal-backdrop" onClick={() => setCartOpen(false)}>
-          <div className="cart-drawer" onClick={e => e.stopPropagation()}>
-            <div className="drawer-header">
-              <h3>Votre Panier ({cartTotalItems})</h3>
-              <button type="button" className="btn-close-drawer" onClick={() => setCartOpen(false)}>
-                <i className="fa-solid fa-xmark" />
-              </button>
-            </div>
-
-            <div className="drawer-body">
-              {cart.length === 0 ? (
-                <div className="empty-cart-view">
-                  <i className="fa-solid fa-bag-shopping" style={{ fontSize: '3rem', color: '#555', marginBottom: 12 }} />
-                  <p>Votre panier est vide.</p>
-                  <button type="button" className="btn btn-primary" onClick={() => { setCartOpen(false); setActivePage('boutique'); }}>
-                    Découvrir nos vêtements
-                  </button>
-                </div>
-              ) : (
-                <div className="cart-items-stack">
-                  {cart.map((item, idx) => (
-                    <div key={`${item.productId}-${item.size}-${item.color}`} className="cart-item-row">
-                      <img src={item.image.startsWith('http') ? item.image : `/${item.image}`} alt={item.name} className="cart-item-img" />
-                      <div className="cart-item-info">
-                        <h4>{item.name}</h4>
-                        <div className="cart-item-sub">Taille : {item.size} | {item.color}</div>
-                        <div className="cart-item-price">{formatPrice(item.price)}</div>
-                        <div className="cart-qty-stepper">
-                          <button type="button" onClick={() => updateCartQty(idx, -1)}>-</button>
-                          <span>{item.qty}</span>
-                          <button type="button" onClick={() => updateCartQty(idx, 1)}>+</button>
-                        </div>
+              {/* TAB : CONFIGURATION */}
+              {adminTab === 'config' && (
+                <div className="admin-section active">
+                  <h2>Configuration Générale</h2>
+                  <form className="form-stack" onSubmit={(e) => { e.preventDefault(); showToast('Configuration mise à jour !'); }}>
+                    <div className="form-grid">
+                      <div className="form-group">
+                        <label className="form-label">Nom de la boutique</label>
+                        <input type="text" className="form-input" value={config.siteName} onChange={e => setConfig({ ...config, siteName: e.target.value })} />
                       </div>
-                      <button type="button" className="btn-remove-item" onClick={() => removeFromCart(idx)} title="Retirer">
-                        <i className="fa-solid fa-trash" />
-                      </button>
+                      <div className="form-group">
+                        <label className="form-label">Slogan</label>
+                        <input type="text" className="form-input" value={config.slogan} onChange={e => setConfig({ ...config, slogan: e.target.value })} />
+                      </div>
+                      <div className="form-group">
+                        <label className="form-label">Téléphone</label>
+                        <input type="text" className="form-input" value={config.phone} onChange={e => setConfig({ ...config, phone: e.target.value })} />
+                      </div>
+                      <div className="form-group">
+                        <label className="form-label">Frais de livraison (FCFA)</label>
+                        <input type="number" className="form-input" value={config.deliveryFee} onChange={e => setConfig({ ...config, deliveryFee: Number(e.target.value) })} />
+                      </div>
                     </div>
-                  ))}
+                    <button type="submit" className="btn btn-primary" style={{ alignSelf: 'flex-start', marginTop: 16 }}>
+                      <i className="fa-solid fa-save" /> Enregistrer les réglages
+                    </button>
+                  </form>
                 </div>
               )}
-            </div>
+            </main>
+          </div>
+        </div>
+      )}
 
-            {cart.length > 0 && (
-              <div className="drawer-footer">
-                <div className="drawer-subtotal-row">
-                  <span>Sous-total :</span>
-                  <strong>{formatPrice(cartSubtotal)}</strong>
+      {/* ============================================================ */}
+      {/* MODALS UNIFIÉES                                              */}
+      {/* ============================================================ */}
+
+      {/* 1. Modal Overlay Sombre */}
+      {(productModal || checkoutOpen || authModalOpen || confirmedOrder || showProductFormModal || showAddUserModal) && (
+        <div
+          id="modal-overlay"
+          className="modal-overlay"
+          style={{ display: 'flex' }}
+          onClick={() => {
+            setProductModal(null);
+            setCheckoutOpen(false);
+            setAuthModalOpen(false);
+            setConfirmedOrder(null);
+            setShowProductFormModal(false);
+            setShowAddUserModal(false);
+          }}
+        />
+      )}
+
+      {/* 2. Modal Détail Produit */}
+      {productModal && (
+        <div id="modal-product" className="modal" style={{ display: 'block' }}>
+          <div className="modal-content modal-large">
+            <button type="button" className="modal-close" onClick={() => setProductModal(null)}>
+              <i className="fa-solid fa-xmark" />
+            </button>
+            <div className="product-modal-layout">
+              <div className="product-modal-img">
+                <img
+                  src={productModal.image.startsWith('/') ? productModal.image : `/${productModal.image}`}
+                  alt={productModal.name}
+                  onError={(e) => { e.target.src = '/tshirt-byafrika.jpg'; }}
+                />
+              </div>
+              <div className="product-modal-info">
+                <h2>{productModal.name}</h2>
+                <p>{productModal.description}</p>
+                <span className="product-modal-price">{formatPrice(productModal.price)}</span>
+
+                <div className="product-modal-option">
+                  <label>Taille :</label>
+                  <div className="product-modal-sizes">
+                    {productModal.sizes?.map(sz => (
+                      <button
+                        key={sz}
+                        type="button"
+                        className={`size-btn ${selectedSize === sz ? 'active' : ''}`}
+                        onClick={() => setSelectedSize(sz)}
+                      >
+                        {sz}
+                      </button>
+                    ))}
+                  </div>
                 </div>
+
+                <div className="product-modal-option">
+                  <label>Couleur :</label>
+                  <div className="product-modal-colors">
+                    {productModal.colors?.map(cl => (
+                      <button
+                        key={cl}
+                        type="button"
+                        className={`color-btn ${selectedColor === cl ? 'active' : ''}`}
+                        onClick={() => setSelectedColor(cl)}
+                      >
+                        {cl}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="product-modal-qty">
+                  <label>Quantité :</label>
+                  <input
+                    type="number"
+                    className="form-input"
+                    value={selectedQty}
+                    min={1}
+                    onChange={e => setSelectedQty(Math.max(1, parseInt(e.target.value) || 1))}
+                  />
+                </div>
+
                 <button
                   type="button"
                   className="btn btn-primary btn-full"
-                  onClick={() => { setCartOpen(false); setCheckoutOpen(true); }}
+                  onClick={() => {
+                    addToCart(productModal, selectedSize, selectedColor, selectedQty);
+                    setProductModal(null);
+                  }}
                 >
-                  Commander Maintenant →
+                  <i className="fa-solid fa-cart-plus" /> Ajouter au panier
                 </button>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 3. Tiroir Panier (Cart Sidebar) */}
+      <div id="cart-sidebar" className={`cart-sidebar ${cartOpen ? 'active' : 'hidden'}`} style={{ display: cartOpen ? 'flex' : 'none' }}>
+        <div className="cart-header">
+          <h2><i className="fa-solid fa-shopping-bag" /> Mon Panier</h2>
+          <button type="button" id="close-cart" onClick={() => setCartOpen(false)}>
+            <i className="fa-solid fa-xmark" />
+          </button>
+        </div>
+        <div className="cart-items" id="cart-items-list">
+          {cart.length === 0 ? (
+            <p className="empty-state">Votre panier est actuellement vide.</p>
+          ) : (
+            cart.map((item, idx) => (
+              <div key={`${item.id}_${item.size}_${item.color}`} className="cart-item" style={{ display: 'flex', gap: 12, alignItems: 'center', padding: '12px 0', borderBottom: '1px solid var(--border-color)' }}>
+                <img src={item.image.startsWith('/') ? item.image : `/${item.image}`} alt={item.name} style={{ width: 55, height: 55, borderRadius: 6, objectFit: 'cover' }} />
+                <div style={{ flex: 1 }}>
+                  <h4 style={{ margin: 0, fontSize: '0.92rem' }}>{item.name}</h4>
+                  <div style={{ fontSize: '0.8rem', color: '#777', margin: '3px 0' }}>{item.size} • {item.color}</div>
+                  <strong style={{ fontSize: '0.9rem', color: '#c49a26' }}>{formatPrice(item.price)}</strong>
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <button type="button" className="btn btn-sm btn-outline" style={{ padding: '2px 8px' }} onClick={() => updateCartQty(idx, -1)}>-</button>
+                  <span style={{ fontWeight: 700, minWidth: 20, textAlign: 'center' }}>{item.qty}</span>
+                  <button type="button" className="btn btn-sm btn-outline" style={{ padding: '2px 8px' }} onClick={() => updateCartQty(idx, 1)}>+</button>
+                  <button type="button" style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', marginLeft: 6 }} onClick={() => removeCartItem(idx)}>
+                    <i className="fa-solid fa-trash-can" />
+                  </button>
+                </div>
+              </div>
+            ))
+          )}
+        </div>
+        <div className="cart-footer">
+          <div className="cart-total">
+            <span>Sous-total :</span>
+            <strong id="cart-total">{formatPrice(cartSubtotal)}</strong>
+          </div>
+          <button
+            type="button"
+            className="btn btn-primary btn-full"
+            disabled={cart.length === 0}
+            onClick={() => {
+              setCartOpen(false);
+              setCheckoutOpen(true);
+            }}
+          >
+            Finaliser la commande →
+          </button>
+        </div>
+      </div>
+
+      {/* 4. Modal Commande (Checkout) */}
+      {checkoutOpen && (
+        <div id="modal-checkout" className="modal" style={{ display: 'block' }}>
+          <div className="modal-content modal-large">
+            <button type="button" className="modal-close" onClick={() => setCheckoutOpen(false)}>
+              <i className="fa-solid fa-xmark" />
+            </button>
+            <h2>Finaliser la commande</h2>
+            <form className="form-stack" onSubmit={handleCheckoutSubmit}>
+              <div className="form-grid">
+                <div className="form-group">
+                  <label className="form-label">Nom complet <span style={{ color: '#ef4444' }}>*</span></label>
+                  <input type="text" name="name" className="form-input" defaultValue={user?.name || ''} placeholder="Votre nom complet" required />
+                </div>
+                <div className="form-group">
+                  <label className="form-label">Téléphone <span style={{ color: '#ef4444' }}>*</span></label>
+                  <input type="tel" name="phone" className="form-input" placeholder="+221 7X XXX XX XX" required />
+                </div>
+              </div>
+
+              {/* Choix livraison vs retrait boutique */}
+              <div className="checkout-delivery-selector-wrap" style={{ margin: '16px 0' }}>
+                <label className="form-label" style={{ fontWeight: 700, marginBottom: 8, display: 'block' }}>
+                  <i className="fa-solid fa-boxes-packing" style={{ color: 'var(--gold-accent)' }} /> Mode de réception souhaité :
+                </label>
+                <div className="delivery-options-grid">
+                  <label className={`delivery-option-card ${checkoutDelivery === 'delivery' ? 'active' : ''}`}>
+                    <input
+                      type="radio"
+                      name="deliveryType"
+                      checked={checkoutDelivery === 'delivery'}
+                      onChange={() => setCheckoutDelivery('delivery')}
+                    />
+                    <div className="delivery-card-inner">
+                      <div className="delivery-card-main">
+                        <span className="delivery-type-icon"><i className="fa-solid fa-truck-fast" /></span>
+                        <div>
+                          <span className="delivery-title">Livraison à domicile</span>
+                          <span className="delivery-sub">Partout à Dakar et régions</span>
+                        </div>
+                      </div>
+                      <span className="delivery-price-badge">{formatPrice(config.deliveryFee || 2000)}</span>
+                    </div>
+                  </label>
+
+                  <label className={`delivery-option-card ${checkoutDelivery === 'pickup' ? 'active' : ''}`}>
+                    <input
+                      type="radio"
+                      name="deliveryType"
+                      checked={checkoutDelivery === 'pickup'}
+                      onChange={() => setCheckoutDelivery('pickup')}
+                    />
+                    <div className="delivery-card-inner">
+                      <div className="delivery-card-main">
+                        <span className="delivery-type-icon"><i className="fa-solid fa-shop" /></span>
+                        <div>
+                          <span className="delivery-title">Retrait en boutique</span>
+                          <span className="delivery-sub">Boutique BY_AFRIKA (Dakar)</span>
+                        </div>
+                      </div>
+                      <span className="delivery-price-badge free-badge">0 FCFA • Gratuit</span>
+                    </div>
+                  </label>
+                </div>
+              </div>
+
+              {checkoutDelivery === 'delivery' ? (
+                <div className="form-group full-width">
+                  <label className="form-label">Adresse de livraison <span style={{ color: '#ef4444' }}>*</span></label>
+                  <input type="text" name="address" className="form-input" placeholder="Quartier, rue, repère ou ville au Sénégal" required />
+                </div>
+              ) : (
+                <div className="checkout-pickup-info-box" style={{ display: 'flex', gap: 12, background: '#f8f8f6', padding: 14, borderRadius: 8, margin: '12px 0' }}>
+                  <i className="fa-solid fa-location-dot" style={{ color: '#c49a26', fontSize: '1.3rem', marginTop: 2 }} />
+                  <div>
+                    <strong>Retrait au Showroom BY_AFRIKA</strong>
+                    <p style={{ margin: '2px 0 0', fontSize: '0.83rem', color: 'var(--text-secondary)' }}>
+                      Votre commande sera prête sous 24h à la boutique. Aucun frais de livraison.
+                    </p>
+                  </div>
+                </div>
+              )}
+
+              <div className="form-group full-width">
+                <label className="form-label">Notes pour la livraison (optionnel)</label>
+                <textarea name="notes" className="form-input" rows={2} placeholder="Ex: Appeler avant d'arriver..." />
+              </div>
+
+              <div className="checkout-summary" style={{ background: '#f9f9f9', padding: 16, borderRadius: 8, margin: '16px 0' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6 }}>
+                  <span>Sous-total articles :</span>
+                  <span>{formatPrice(cartSubtotal)}</span>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6 }}>
+                  <span>Frais de livraison :</span>
+                  <span>{deliveryFee === 0 ? 'Gratuit (0 FCFA)' : formatPrice(deliveryFee)}</span>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 700, fontSize: '1.1rem', borderTop: '1px solid #ddd', paddingTop: 8, marginTop: 8 }}>
+                  <span>Total à payer à réception :</span>
+                  <span style={{ color: '#c49a26' }}>{formatPrice(cartGrandTotal)}</span>
+                </div>
+              </div>
+
+              <p className="payment-method">
+                <i className="fa-solid fa-money-bill-wave" /> Paiement à la réception (Arriver Payer en espèces ou Wave)
+              </p>
+
+              <button type="submit" className="btn btn-primary btn-full">Confirmer ma commande</button>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* 5. Modal Reçu / Confirmation */}
+      {confirmedOrder && (
+        <div id="modal-confirmation" className="modal" style={{ display: 'block' }}>
+          <div className="modal-content">
+            <div className="confirmation-icon" style={{ textAlign: 'center', color: '#10b981', fontSize: '3rem', marginBottom: 12 }}>
+              <i className="fa-solid fa-circle-check" />
+            </div>
+            <h2 style={{ textAlign: 'center' }}>Commande Enregistrée !</h2>
+            <p style={{ textAlign: 'center', color: 'var(--text-secondary)' }}>
+              Merci pour votre confiance. Notre équipe va préparer votre colis immédiatement.
+            </p>
+            <div style={{ background: '#f8f8f8', padding: 16, borderRadius: 8, margin: '16px 0' }}>
+              <p><strong>N° de Commande :</strong> {confirmedOrder.id}</p>
+              <p><strong>Client :</strong> {confirmedOrder.customer?.name} ({confirmedOrder.customer?.phone})</p>
+              <p><strong>Mode :</strong> {confirmedOrder.deliveryType}</p>
+              <p><strong>Total à payer :</strong> <strong style={{ color: '#c49a26' }}>{formatPrice(confirmedOrder.total)}</strong></p>
+            </div>
+            <div style={{ display: 'flex', gap: 12 }}>
+              <button
+                type="button"
+                className="btn btn-outline"
+                style={{ flex: 1 }}
+                onClick={() => window.print()}
+              >
+                <i className="fa-solid fa-print" /> Imprimer le reçu
+              </button>
+              <button
+                type="button"
+                className="btn btn-primary"
+                style={{ flex: 1 }}
+                onClick={() => setConfirmedOrder(null)}
+              >
+                Continuer mes achats
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 6. Modal Authentification */}
+      {authModalOpen && (
+        <div id="modal-login" className="modal auth-modal-container" style={{ display: 'block' }}>
+          <div className="auth-modal-card">
+            <button type="button" className="auth-modal-close-btn modal-close" onClick={() => setAuthModalOpen(false)}>
+              <i className="fa-solid fa-xmark" />
+            </button>
+            <div className="auth-modal-tabs">
+              <button
+                type="button"
+                className={`auth-modal-tab-btn ${authTab === 'login' ? 'active' : ''}`}
+                onClick={() => setAuthTab('login')}
+              >
+                Se connecter
+              </button>
+              <button
+                type="button"
+                className={`auth-modal-tab-btn ${authTab === 'register' ? 'active' : ''}`}
+                onClick={() => setAuthTab('register')}
+              >
+                Créer un compte
+              </button>
+            </div>
+
+            {authTab === 'login' ? (
+              <form className="auth-form-stack" onSubmit={handleAuthSubmit}>
+                <div className="auth-field">
+                  <label className="auth-label">Adresse e-mail</label>
+                  <input type="email" name="email" className="auth-input" placeholder="exemple@email.com" required />
+                </div>
+                <div className="auth-field">
+                  <label className="auth-label">Mot de passe</label>
+                  <input type="password" name="password" className="auth-input" placeholder="••••••••" required />
+                </div>
+                <button type="submit" className="btn-auth-submit">Se connecter</button>
+              </form>
+            ) : (
+              <form className="auth-form-stack" onSubmit={handleAuthSubmit}>
+                <div className="auth-field">
+                  <label className="auth-label">Nom complet</label>
+                  <input type="text" name="name" className="auth-input" placeholder="Votre nom" required />
+                </div>
+                <div className="auth-field">
+                  <label className="auth-label">Adresse e-mail</label>
+                  <input type="email" name="email" className="auth-input" placeholder="exemple@email.com" required />
+                </div>
+                <div className="auth-field">
+                  <label className="auth-label">Mot de passe</label>
+                  <input type="password" name="password" className="auth-input" placeholder="••••••••" required />
+                </div>
+                <button type="submit" className="btn-auth-submit">Créer mon compte</button>
+              </form>
             )}
           </div>
         </div>
       )}
 
-      {/* 2. MODAL DÉTAIL PRODUIT */}
-      {productModal && (
-        <div className="modal-backdrop" onClick={() => setProductModal(null)}>
-          <div className="product-modal-card" onClick={e => e.stopPropagation()}>
-            <button type="button" className="modal-close-icon" onClick={() => setProductModal(null)}>
+      {/* 7. Modal Admin Ajout/Modification Produit */}
+      {showProductFormModal && (
+        <div className="modal" style={{ display: 'block' }}>
+          <div className="modal-content modal-large">
+            <button type="button" className="modal-close" onClick={() => setShowProductFormModal(false)}>
               <i className="fa-solid fa-xmark" />
             </button>
-
-            <div className="product-modal-grid">
-              <div className="product-modal-media">
-                <img src={productModal.image.startsWith('http') ? productModal.image : `/${productModal.image}`} alt={productModal.name} />
-              </div>
-              <div className="product-modal-details">
-                <span className="modal-cat-tag">{productModal.category} • {productModal.genre}</span>
-                <h2 className="modal-prod-title">{productModal.name}</h2>
-                <div className="modal-prod-price">{formatPrice(productModal.price)}</div>
-                <p className="modal-prod-desc">{productModal.description}</p>
-
-                {/* Sélecteur de Taille */}
-                <div className="modal-field-block">
-                  <label className="field-label">Choisir votre taille :</label>
-                  <div className="pills-selector">
-                    {(productModal.sizes || ['S', 'M', 'L', 'XL', 'XXL']).map(s => (
-                      <button
-                        key={s}
-                        type="button"
-                        className={`size-pill ${modalSize === s ? 'active' : ''}`}
-                        onClick={() => setModalSize(s)}
-                      >
-                        {s}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                {/* Sélecteur de Couleur */}
-                <div className="modal-field-block">
-                  <label className="field-label">Couleur :</label>
-                  <div className="pills-selector">
-                    {(productModal.colors || ['Noir', 'Blanc']).map(c => (
-                      <button
-                        key={c}
-                        type="button"
-                        className={`color-pill ${modalColor === c ? 'active' : ''}`}
-                        onClick={() => setModalColor(c)}
-                      >
-                        {c}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                {/* Quantité & Ajout */}
-                <div className="modal-add-row">
-                  <div className="qty-counter">
-                    <button type="button" onClick={() => setModalQty(prev => Math.max(1, prev - 1))}>-</button>
-                    <span>{modalQty}</span>
-                    <button type="button" onClick={() => setModalQty(prev => prev + 1)}>+</button>
-                  </div>
-                  <button
-                    type="button"
-                    className="btn btn-primary btn-modal-add"
-                    onClick={() => addToCart(productModal, modalSize, modalColor, modalQty)}
-                  >
-                    <i className="fa-solid fa-bag-shopping" /> Ajouter au Panier
-                  </button>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* 3. MODAL DE COMMANDE (CHECKOUT) */}
-      {checkoutOpen && (
-        <div className="modal-backdrop" onClick={() => setCheckoutOpen(false)}>
-          <div className="checkout-modal-card" onClick={e => e.stopPropagation()}>
-            <button type="button" className="modal-close-icon" onClick={() => setCheckoutOpen(false)}>
-              <i className="fa-solid fa-xmark" />
-            </button>
-
-            <h2 className="checkout-title">Finaliser votre Commande</h2>
-
-            <form onSubmit={handlePlaceOrder}>
-              {/* Choix Mode de Réception */}
-              <div className="delivery-choice-box">
-                <label className={`delivery-radio-label ${checkoutDelivery === 'delivery' ? 'selected' : ''}`}>
-                  <input
-                    type="radio"
-                    name="delivery"
-                    value="delivery"
-                    checked={checkoutDelivery === 'delivery'}
-                    onChange={() => setCheckoutDelivery('delivery')}
-                  />
-                  <div>
-                    <strong>🚚 Livraison à domicile</strong>
-                    <div style={{ fontSize: '0.82rem', color: '#aaa' }}>Livré directement chez vous ({formatPrice(config.deliveryFee || 2000)})</div>
-                  </div>
-                </label>
-
-                <label className={`delivery-radio-label ${checkoutDelivery === 'pickup' ? 'selected' : ''}`}>
-                  <input
-                    type="radio"
-                    name="delivery"
-                    value="pickup"
-                    checked={checkoutDelivery === 'pickup'}
-                    onChange={() => setCheckoutDelivery('pickup')}
-                  />
-                  <div>
-                    <strong>🏬 Retrait en Boutique BY_AFRIKA</strong>
-                    <div style={{ fontSize: '0.82rem', color: '#22c55e' }}>Dakar, Sénégal — 0 FCFA (Gratuit)</div>
-                  </div>
-                </label>
-              </div>
-
-              {/* Coordonnées Client */}
-              <div className="form-group">
-                <label className="form-label">Nom et Prénom *</label>
-                <input
-                  type="text"
-                  required
-                  className="form-input"
-                  placeholder="Ex: Ibrahima Ndiaye"
-                  value={checkoutName}
-                  onChange={e => setCheckoutName(e.target.value)}
-                />
-              </div>
-
-              <div className="form-group">
-                <label className="form-label">Numéro de Téléphone (WhatsApp / Appel) *</label>
-                <input
-                  type="tel"
-                  required
-                  className="form-input"
-                  placeholder="Ex: +221 77 123 45 67"
-                  value={checkoutPhone}
-                  onChange={e => setCheckoutPhone(e.target.value)}
-                />
-              </div>
-
-              {checkoutDelivery === 'delivery' && (
+            <h2>{editingProduct ? 'Modifier le Produit' : 'Ajouter un Produit'}</h2>
+            <form className="form-stack" onSubmit={handleSaveProduct}>
+              <div className="form-grid">
                 <div className="form-group">
-                  <label className="form-label">Adresse de livraison complète à Dakar / Sénégal *</label>
-                  <input
-                    type="text"
-                    required
-                    className="form-input"
-                    placeholder="Quartier, rue, numéro de villa ou repère"
-                    value={checkoutAddress}
-                    onChange={e => setCheckoutAddress(e.target.value)}
-                  />
-                </div>
-              )}
-
-              <div className="form-group">
-                <label className="form-label">Instructions ou remarques de commande</label>
-                <input
-                  type="text"
-                  className="form-input"
-                  placeholder="Ex: Appeler avant d'arriver..."
-                  value={checkoutNotes}
-                  onChange={e => setCheckoutNotes(e.target.value)}
-                />
-              </div>
-
-              {/* Proposition création de compte si non connecté */}
-              {!user && (
-                <div className="account-prompt-card">
-                  <label style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer', fontWeight: 600 }}>
-                    <input
-                      type="checkbox"
-                      checked={checkoutCreateAccount}
-                      onChange={e => setCheckoutCreateAccount(e.target.checked)}
-                    />
-                    <span>Créer un compte client BY_AFRIKA (Recommandé)</span>
-                  </label>
-                  {checkoutCreateAccount && (
-                    <div style={{ marginTop: '0.8rem', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
-                      <input
-                        type="email"
-                        placeholder="Votre email"
-                        className="form-input"
-                        value={checkoutEmail}
-                        onChange={e => setCheckoutEmail(e.target.value)}
-                      />
-                      <input
-                        type="password"
-                        placeholder="Créer un mot de passe"
-                        className="form-input"
-                        value={checkoutPassword}
-                        onChange={e => setCheckoutPassword(e.target.value)}
-                      />
-                    </div>
-                  )}
-                </div>
-              )}
-
-              {/* Récapitulatif Total */}
-              <div className="checkout-summary-box">
-                <div className="summary-line">
-                  <span>Sous-total articles :</span>
-                  <strong>{formatPrice(cartSubtotal)}</strong>
-                </div>
-                <div className="summary-line">
-                  <span>Frais de réception :</span>
-                  <strong style={{ color: checkoutDelivery === 'pickup' ? '#22c55e' : '#fff' }}>
-                    {checkoutDelivery === 'pickup' ? '0 FCFA (Gratuit)' : formatPrice(deliveryFee)}
-                  </strong>
-                </div>
-                <div className="summary-line total-line">
-                  <span>Total à régler à réception :</span>
-                  <span className="total-gold">{formatPrice(checkoutTotal)}</span>
-                </div>
-              </div>
-
-              <button type="submit" className="btn btn-primary btn-full" style={{ marginTop: '1.25rem', padding: '14px' }}>
-                <i className="fa-solid fa-check" /> Valider la Commande ({checkoutDelivery === 'pickup' ? 'Paiement au Retrait' : 'Arriver Payer'})
-              </button>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {/* 4. REÇU DE CAISSE TÉLÉCHARGEABLE */}
-      {receiptOrder && (
-        <div className="modal-backdrop" onClick={() => setReceiptOrder(null)}>
-          <div className="receipt-modal-card" onClick={e => e.stopPropagation()}>
-            <div style={{ textAlign: 'center', marginBottom: '1.5rem' }}>
-              <div style={{ width: 60, height: 60, borderRadius: '50%', background: 'rgba(34,197,94,0.15)', color: '#22c55e', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 10px', fontSize: '1.8rem' }}>
-                ✓
-              </div>
-              <h2 style={{ margin: 0, color: '#d4af37' }}>COMMANDE CONFIRMÉE !</h2>
-              <p style={{ color: '#aaa', fontSize: '0.9rem' }}>N° {receiptOrder.id}</p>
-            </div>
-
-            <div className="receipt-paper">
-              <div className="receipt-row"><span>Client :</span><strong>{receiptOrder.customer?.name}</strong></div>
-              <div className="receipt-row"><span>Téléphone :</span><strong>{receiptOrder.customer?.phone}</strong></div>
-              <div className="receipt-row"><span>Mode :</span><strong>{receiptOrder.deliveryType}</strong></div>
-              <div className="receipt-row"><span>Règlement :</span><strong>{receiptOrder.paymentMethod}</strong></div>
-
-              <hr style={{ borderColor: '#333', margin: '10px 0' }} />
-
-              <div style={{ marginBottom: 10 }}>
-                {receiptOrder.items?.map(it => (
-                  <div key={`${it.productId}-${it.size}`} className="receipt-row" style={{ fontSize: '0.85rem' }}>
-                    <span>{it.name} [{it.size}] x{it.qty}</span>
-                    <span>{formatPrice(it.price * it.qty)}</span>
-                  </div>
-                ))}
-              </div>
-
-              <div className="receipt-row total-gold" style={{ fontSize: '1.1rem', fontWeight: 800 }}>
-                <span>Total :</span>
-                <span>{formatPrice(receiptOrder.total)}</span>
-              </div>
-            </div>
-
-            <div style={{ display: 'flex', gap: 10, marginTop: '1.5rem' }}>
-              <button type="button" className="btn btn-outline" style={{ flex: 1 }} onClick={() => window.print()}>
-                <i className="fa-solid fa-print" /> Imprimer
-              </button>
-              <button type="button" className="btn btn-primary" style={{ flex: 1 }} onClick={() => setReceiptOrder(null)}>
-                Terminer
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* 5. MODAL AUTHENTIFICATION */}
-      {authModalOpen && (
-        <div className="modal-backdrop" onClick={() => setAuthModalOpen(false)}>
-          <div className="auth-modal-card" onClick={e => e.stopPropagation()}>
-            <button type="button" className="modal-close-icon" onClick={() => setAuthModalOpen(false)}>
-              <i className="fa-solid fa-xmark" />
-            </button>
-
-            <div className="auth-tabs-row">
-              <button
-                type="button"
-                className={`auth-tab ${authTab === 'login' ? 'active' : ''}`}
-                onClick={() => setAuthTab('login')}
-              >
-                Se Connecter
-              </button>
-              <button
-                type="button"
-                className={`auth-tab ${authTab === 'register' ? 'active' : ''}`}
-                onClick={() => setAuthTab('register')}
-              >
-                Créer un Compte
-              </button>
-            </div>
-
-            <form onSubmit={handleLogin} className="auth-form-stack">
-              <div className="form-group">
-                <label className="form-label">Adresse Email</label>
-                <input type="email" name="email" required className="form-input" placeholder="exemple@gmail.com" />
-              </div>
-              <div className="form-group">
-                <label className="form-label">Mot de passe</label>
-                <input type="password" name="password" required className="form-input" placeholder="••••••••" />
-              </div>
-              <button type="submit" className="btn btn-primary btn-full" style={{ marginTop: '1rem' }}>
-                {authTab === 'login' ? 'Se Connecter' : 'Créer mon Compte'}
-              </button>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {/* 6. MODAL AJOUT / MODIFICATION PRODUIT (ADMIN) */}
-      {productFormOpen && (
-        <div className="modal-backdrop" onClick={() => setProductFormOpen(false)}>
-          <div className="admin-form-modal" onClick={e => e.stopPropagation()}>
-            <button type="button" className="modal-close-icon" onClick={() => setProductFormOpen(false)}>
-              <i className="fa-solid fa-xmark" />
-            </button>
-            <h2>{editingProduct ? 'Modifier le Produit' : 'Ajouter un Vêtement'}</h2>
-
-            <form onSubmit={handleSaveProduct} className="form-grid-stack">
-              <div className="form-group">
-                <label className="form-label">Nom du vêtement *</label>
-                <input type="text" name="name" required className="form-input" defaultValue={editingProduct?.name || ''} />
-              </div>
-
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-                <div className="form-group">
-                  <label className="form-label">Prix (FCFA) *</label>
-                  <input type="number" name="price" required className="form-input" defaultValue={editingProduct?.price || 15000} />
-                </div>
-                <div className="form-group">
-                  <label className="form-label">Stock disponible *</label>
-                  <input type="number" name="stock" required className="form-input" defaultValue={editingProduct?.stock || 20} />
-                </div>
-              </div>
-
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-                <div className="form-group">
-                  <label className="form-label">Genre</label>
-                  <select name="genre" className="form-input" defaultValue={editingProduct?.genre || 'Unisexe'}>
-                    <option value="Unisexe">Unisexe</option>
-                    <option value="Homme">Homme</option>
-                    <option value="Femme">Femme</option>
-                  </select>
+                  <label className="form-label">Nom de l'article</label>
+                  <input type="text" name="name" className="form-input" defaultValue={editingProduct?.name || ''} required />
                 </div>
                 <div className="form-group">
                   <label className="form-label">Catégorie</label>
                   <select name="category" className="form-input" defaultValue={editingProduct?.category || 'T-shirts'}>
-                    {(config.categories || ['T-shirts', 'Chemises', 'Robes', 'Pantalons', 'Sweats']).map(c => (
-                      <option key={c} value={c}>{c}</option>
-                    ))}
+                    {config.categories?.map(c => <option key={c} value={c}>{c}</option>)}
                   </select>
                 </div>
+                <div className="form-group">
+                  <label className="form-label">Genre</label>
+                  <select name="genre" className="form-input" defaultValue={editingProduct?.genre || 'Unisexe'}>
+                    <option value="Homme">Homme</option>
+                    <option value="Femme">Femme</option>
+                    <option value="Unisexe">Unisexe</option>
+                  </select>
+                </div>
+                <div className="form-group">
+                  <label className="form-label">Prix (FCFA)</label>
+                  <input type="number" name="price" className="form-input" defaultValue={editingProduct?.price || 15000} required />
+                </div>
+                <div className="form-group">
+                  <label className="form-label">Stock disponible</label>
+                  <input type="number" name="stock" className="form-input" defaultValue={editingProduct?.stock || 50} required />
+                </div>
+                <div className="form-group">
+                  <label className="form-label">Image (ex: /tshirt-byafrika.jpg)</label>
+                  <input type="text" name="image" className="form-input" defaultValue={editingProduct?.image || '/tshirt-byafrika.jpg'} />
+                </div>
+                <div className="form-group">
+                  <label className="form-label">Tailles (séparées par virgule)</label>
+                  <input type="text" name="sizes" className="form-input" defaultValue={editingProduct?.sizes?.join(', ') || 'S, M, L, XL, XXL'} />
+                </div>
+                <div className="form-group">
+                  <label className="form-label">Couleurs (séparées par virgule)</label>
+                  <input type="text" name="colors" className="form-input" defaultValue={editingProduct?.colors?.join(', ') || 'Noir, Blanc'} />
+                </div>
               </div>
-
-              <div className="form-group">
-                <label className="form-label">Nom du fichier image</label>
-                <input type="text" name="image" className="form-input" defaultValue={editingProduct?.image || 'tshirt-byafrika.jpg'} />
+              <div className="form-group full-width">
+                <label className="form-label">Description</label>
+                <textarea name="description" className="form-input" rows={3} defaultValue={editingProduct?.description || ''} />
               </div>
-
-              <div className="form-group">
-                <label className="form-label">Description du produit</label>
-                <textarea name="description" rows="3" className="form-input" defaultValue={editingProduct?.description || ''} />
-              </div>
-
-              <button type="submit" className="btn btn-primary btn-full" style={{ marginTop: '1rem' }}>
-                Enregistrer dans le Catalogue
+              <button type="submit" className="btn btn-primary btn-full">
+                {editingProduct ? 'Enregistrer les modifications' : 'Ajouter au catalogue'}
               </button>
             </form>
           </div>
         </div>
       )}
 
-      {/* 7. DÉTAIL COMMANDE ADMIN */}
-      {selectedAdminOrder && (
-        <div className="modal-backdrop" onClick={() => setSelectedAdminOrder(null)}>
-          <div className="admin-detail-modal" onClick={e => e.stopPropagation()}>
-            <button type="button" className="modal-close-icon" onClick={() => setSelectedAdminOrder(null)}>
-              <i className="fa-solid fa-xmark" />
-            </button>
-            <h2>Détail de la Commande {selectedAdminOrder.id}</h2>
-            <div style={{ margin: '1rem 0' }}>
-              <p><strong>Client :</strong> {selectedAdminOrder.customer?.name}</p>
-              <p><strong>Téléphone :</strong> {selectedAdminOrder.customer?.phone}</p>
-              <p><strong>Adresse / Mode :</strong> {selectedAdminOrder.deliveryType} — {selectedAdminOrder.customer?.address}</p>
-              <p><strong>Notes :</strong> {selectedAdminOrder.customer?.notes || 'Aucune'}</p>
-              <p><strong>Total :</strong> <span style={{ color: '#d4af37', fontWeight: 'bold' }}>{formatPrice(selectedAdminOrder.total)}</span></p>
-            </div>
-            <h4>Articles commandés :</h4>
-            <ul>
-              {selectedAdminOrder.items?.map((it, idx) => (
-                <li key={idx}>{it.name} [{it.size} - {it.color}] x{it.qty} = {formatPrice(it.price * it.qty)}</li>
-              ))}
-            </ul>
-          </div>
+      {/* 8. Toast de Notification */}
+      {toastMessage && (
+        <div id="toast" className="toast" style={{ display: 'block' }}>
+          <span>{toastMessage}</span>
         </div>
       )}
 
-      {/* 8. MODAL AJOUT UTILISATEUR RÔLES */}
-      {addUserModalOpen && (
-        <div className="modal-backdrop" onClick={() => setAddUserModalOpen(false)}>
-          <div className="admin-detail-modal" onClick={e => e.stopPropagation()}>
-            <button type="button" className="modal-close-icon" onClick={() => setAddUserModalOpen(false)}>
-              <i className="fa-solid fa-xmark" />
-            </button>
-            <h2>Ajouter un Membre de l'Équipe</h2>
-            <form onSubmit={e => {
-              e.preventDefault();
-              const name = e.target.name.value.trim();
-              const email = e.target.email.value.trim();
-              const phone = e.target.phone.value.trim();
-              const role = e.target.role.value;
-              setUsersList(prev => [...prev, { id: `user_${Date.now()}`, name, email, phone, role }]);
-              setAddUserModalOpen(false);
-              showToast('Nouveau membre ajouté avec succès !');
-            }}>
-              <div className="form-group" style={{ marginBottom: 10 }}>
-                <label className="form-label">Nom complet</label>
-                <input type="text" name="name" required className="form-input" placeholder="Ex: Fatou Ndiaye" />
-              </div>
-              <div className="form-group" style={{ marginBottom: 10 }}>
-                <label className="form-label">Email professionnel</label>
-                <input type="email" name="email" required className="form-input" placeholder="fatou@byafrica.com" />
-              </div>
-              <div className="form-group" style={{ marginBottom: 10 }}>
-                <label className="form-label">Téléphone</label>
-                <input type="tel" name="phone" className="form-input" placeholder="+221..." />
-              </div>
-              <div className="form-group" style={{ marginBottom: 15 }}>
-                <label className="form-label">Rôle attribué</label>
-                <select name="role" className="form-input">
-                  <option value="gestionnaire">Gestionnaire (Stocks & Commandes)</option>
-                  <option value="livreur">Livreur (Expéditions & Encaissements)</option>
-                  <option value="admin">Administrateur</option>
-                  <option value="client">Client</option>
-                </select>
-              </div>
-              <button type="submit" className="btn btn-primary btn-full">Enregistrer le Membre</button>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {/* 9. BANDEAU DE COOKIES */}
+      {/* 9. Cookie Consent Banner */}
       {!cookieConsent && (
-        <div className="cookie-banner-wrap">
-          <div className="cookie-banner-content">
-            <p>
-              Nous utilisons des cookies essentiels pour sécuriser votre session et vous garantir la meilleure expérience sur <strong>BY_AFRIKA</strong>.
-            </p>
-            <div style={{ display: 'flex', gap: 10 }}>
+        <div id="cookie-banner" className="cookie-banner" style={{ display: 'block' }}>
+          <div className="cookie-container">
+            <div className="cookie-icon">
+              <i className="fa-solid fa-cookie-bite" />
+            </div>
+            <div className="cookie-text">
+              <h4>Gestion des Cookies & Vie Privée</h4>
+              <p>
+                Nous utilisons des cookies essentiels pour enregistrer vos sélections de panier et vous garantir une
+                expérience d'achat optimale sur <strong>BY_AFRIKA</strong>.
+              </p>
+            </div>
+            <div className="cookie-actions">
               <button
                 type="button"
-                className="btn btn-sm btn-primary"
-                onClick={() => { setCookieConsent(true); localStorage.setItem('byafrika_cookie_consent', 'accepted'); }}
+                id="btn-accept-cookies"
+                className="btn btn-primary btn-sm"
+                onClick={() => {
+                  setCookieConsent(true);
+                  localStorage.setItem('byafrika_cookie_consent', 'all');
+                }}
               >
                 Accepter tout
               </button>
               <button
                 type="button"
-                className="btn btn-sm btn-outline"
-                onClick={() => { setCookieConsent(true); localStorage.setItem('byafrika_cookie_consent', 'essential'); }}
+                id="btn-refuse-cookies"
+                className="btn btn-secondary btn-sm"
+                onClick={() => {
+                  setCookieConsent(true);
+                  localStorage.setItem('byafrika_cookie_consent', 'essential');
+                }}
               >
-                Essentiels
+                Essentiels uniquement
               </button>
             </div>
           </div>
         </div>
       )}
-    </div>
+    </>
   );
 }
