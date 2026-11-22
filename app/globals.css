@@ -1112,19 +1112,7 @@ h6 {
 }
 
 .product-badge {
-  position: absolute;
-  top: 12px;
-  left: 12px;
-  background: rgba(255, 255, 255, 0.94);
-  color: #111111;
-  font-size: 0.7rem;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-  padding: 4px 10px;
-  border-radius: 50px;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
-  backdrop-filter: blur(4px);
+  display: none !important;
 }
 
 .product-card-info {

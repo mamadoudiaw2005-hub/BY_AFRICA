@@ -393,7 +393,6 @@ export default function ByAfrikaPage() {
             alt={p.name}
             onError={(e) => { e.target.src = '/tshirt-byafrika.jpg'; }}
           />
-          <span className="product-badge">{p.genre}</span>
         </div>
         <div className="product-card-info">
           <span className="product-card-genre">{p.category || 'Vêtement'}</span>
