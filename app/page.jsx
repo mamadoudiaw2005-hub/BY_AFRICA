@@ -2061,31 +2061,12 @@ export default function ByAfrikaPage() {
                 <div style={{ display: 'flex', gap: 8 }}>
                   <button
                     type="button"
-                    onClick={openAddProductModal}
-                    style={{
-                      background: '#dfba5c',
-                      border: 'none',
-                      color: '#111',
-                      padding: '5px 10px',
-                      borderRadius: '6px',
-                      fontSize: '0.78rem',
-                      fontWeight: 700,
-                      cursor: 'pointer',
-                      display: 'inline-flex',
-                      alignItems: 'center',
-                      gap: 4
-                    }}
-                  >
-                    <i className="fa-solid fa-plus" /> Vêtement
-                  </button>
-                  <button
-                    type="button"
                     onClick={() => setActivePage('accueil')}
                     style={{
                       background: 'rgba(255,255,255,0.08)',
                       border: '1px solid rgba(255,255,255,0.2)',
                       color: '#fff',
-                      padding: '5px 10px',
+                      padding: '6px 12px',
                       borderRadius: '6px',
                       fontSize: '0.78rem',
                       fontWeight: 600,
@@ -2104,7 +2085,7 @@ export default function ByAfrikaPage() {
                       background: 'rgba(239, 68, 68, 0.15)',
                       border: '1px solid #ef4444',
                       color: '#ef4444',
-                      padding: '5px 10px',
+                      padding: '6px 12px',
                       borderRadius: '6px',
                       fontSize: '0.78rem',
                       fontWeight: 700,
@@ -2277,11 +2258,11 @@ export default function ByAfrikaPage() {
                       <div className="admin-shortcuts-grid">
                         <button
                           type="button"
-                          className="btn btn-primary"
-                          onClick={openAddProductModal}
-                          style={{ padding: '8px 16px', fontSize: '0.85rem', fontWeight: 700, display: 'inline-flex', alignItems: 'center', gap: 6 }}
+                          className="btn btn-outline"
+                          onClick={() => setAdminTab('produits')}
+                          style={{ padding: '8px 16px', fontSize: '0.85rem', fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: 6 }}
                         >
-                          <i className="fa-solid fa-plus-circle" /> Ajouter un Vêtement
+                          <i className="fa-solid fa-shirt" /> Gérer le catalogue ({products.length} articles)
                         </button>
                         <button
                           type="button"
