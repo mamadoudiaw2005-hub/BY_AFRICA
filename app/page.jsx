@@ -88,6 +88,14 @@ export default function ByAfrikaPage() {
       const savedCart = localStorage.getItem('byafrika_cart');
       if (savedCart) setCart(JSON.parse(savedCart));
 
+      const savedProducts = localStorage.getItem('byafrika_products');
+      if (savedProducts) {
+        try {
+          const parsedProds = JSON.parse(savedProducts);
+          if (Array.isArray(parsedProds) && parsedProds.length > 0) setProducts(parsedProds);
+        } catch (e) { }
+      }
+
       const savedOrders = localStorage.getItem('byafrika_orders');
       if (savedOrders) setOrders(JSON.parse(savedOrders));
 
@@ -179,12 +187,20 @@ export default function ByAfrikaPage() {
     window.scrollTo({ top: 0, left: 0, behavior: 'instant' });
   }, [activePage]);
 
-  // Sauvegarder panier et commandes
+  // Sauvegarder panier, produits et commandes
   useEffect(() => {
     try {
       localStorage.setItem('byafrika_cart', JSON.stringify(cart));
     } catch (e) { }
   }, [cart]);
+
+  useEffect(() => {
+    try {
+      if (products && products.length > 0) {
+        localStorage.setItem('byafrika_products', JSON.stringify(products));
+      }
+    } catch (e) { }
+  }, [products]);
 
   useEffect(() => {
     try {
@@ -210,7 +226,16 @@ export default function ByAfrikaPage() {
 
   const getSafeImage = (img) => {
     if (!img || typeof img !== 'string') return '/tshirt-byafrika.jpg';
-    return img.startsWith('/') ? img : `/${img}`;
+    const trimmed = img.trim();
+    if (
+      trimmed.startsWith('data:') ||
+      trimmed.startsWith('http://') ||
+      trimmed.startsWith('https://') ||
+      trimmed.startsWith('blob:')
+    ) {
+      return trimmed;
+    }
+    return trimmed.startsWith('/') ? trimmed : `/${trimmed}`;
   };
 
   // ── ACTIONS PANIER ──
@@ -543,17 +568,32 @@ export default function ByAfrikaPage() {
   const handleGoogleAuthClick = async () => {
     try {
       setAuthLoading(true);
-      const { error } = await supabase.auth.signInWithOAuth({
+      const { data, error } = await supabase.auth.signInWithOAuth({
         provider: 'google',
         options: {
-          redirectTo: typeof window !== 'undefined' ? window.location.origin : ''
+          redirectTo: typeof window !== 'undefined' ? window.location.origin : '',
+          skipBrowserRedirect: true
         }
       });
       if (error) throw error;
+      if (data?.url) {
+        // Tester si le provider Google est activé sur Supabase avant de rediriger
+        try {
+          const testRes = await fetch(data.url);
+          if (!testRes.ok) {
+            throw new Error('Fournisseur Google non activé sur Supabase');
+          }
+          window.location.href = data.url;
+          return;
+        } catch (fetchErr) {
+          throw fetchErr;
+        }
+      }
     } catch (err) {
-      console.warn('Google OAuth Supabase non configuré ou échec, bascule sur formulaire Google :', err);
+      console.warn('Google OAuth Supabase non activé dans le dashboard, bascule sur profil Google :', err);
       setAuthModalOpen(false);
       setGoogleAuthModalOpen(true);
+      showToast('Fournisseur Google non configuré sur Supabase : complétez votre profil Google.');
     } finally {
       setAuthLoading(false);
     }
@@ -731,16 +771,43 @@ export default function ByAfrikaPage() {
   const handleImageFileChange = (e) => {
     const file = e.target.files?.[0];
     if (file) {
-      if (file.size > 5 * 1024 * 1024) {
-        showToast('Image trop volumineuse (max 5 Mo).', true);
+      if (file.size > 15 * 1024 * 1024) {
+        showToast('Image trop volumineuse (max 15 Mo).', true);
         return;
       }
       const reader = new FileReader();
       reader.onload = (event) => {
-        if (event.target?.result) {
-          setProductFormImage(event.target.result);
-          showToast('Photo sélectionnée avec succès !');
-        }
+        const rawResult = event.target?.result;
+        if (!rawResult) return;
+        // Compression et redimensionnement automatique via Canvas pour un affichage instantané
+        const img = new Image();
+        img.onload = () => {
+          const maxDim = 900;
+          let w = img.width;
+          let h = img.height;
+          if (w > maxDim || h > maxDim) {
+            if (w > h) {
+              h = Math.round((h * maxDim) / w);
+              w = maxDim;
+            } else {
+              w = Math.round((w * maxDim) / h);
+              h = maxDim;
+            }
+          }
+          const canvas = document.createElement('canvas');
+          canvas.width = w;
+          canvas.height = h;
+          const ctx = canvas.getContext('2d');
+          ctx.drawImage(img, 0, 0, w, h);
+          const compressedDataUrl = canvas.toDataURL('image/jpeg', 0.85);
+          setProductFormImage(compressedDataUrl);
+          showToast('Photo optimisée et chargée avec succès !');
+        };
+        img.onerror = () => {
+          setProductFormImage(rawResult);
+          showToast('Photo chargée avec succès !');
+        };
+        img.src = rawResult;
       };
       reader.readAsDataURL(file);
     }
@@ -771,6 +838,8 @@ export default function ByAfrikaPage() {
       : (fd.get('colors') ? fd.get('colors').split(',').map(c => c.trim()).filter(Boolean) : ['Noir', 'Blanc']);
     const chosenImage = productFormImage || fd.get('image') || '/tshirt-byafrika.jpg';
 
+    const isFeatured = fd.get('featured') === 'on' || fd.get('featured') === 'true' || !editingProduct;
+
     const prodData = {
       id: editingProduct?.id || `prod_${Date.now()}`,
       name: fd.get('name') || 'Article BY_AFRIKA',
@@ -782,20 +851,33 @@ export default function ByAfrikaPage() {
       sizes: chosenSizes,
       colors: chosenColors,
       stock: Number(fd.get('stock')) || 25,
-      featured: fd.get('featured') === 'on'
+      featured: isFeatured
     };
 
+    let updatedProducts;
     if (editingProduct) {
-      setProducts(prev => prev.map(p => p.id === editingProduct.id ? prodData : p));
+      updatedProducts = products.map(p => p.id === editingProduct.id ? prodData : p);
+      setProducts(updatedProducts);
       showToast('Vêtement mis à jour avec succès.');
     } else {
-      setProducts(prev => [prodData, ...prev]);
-      showToast('Nouveau vêtement ajouté avec succès au catalogue !');
+      updatedProducts = [prodData, ...products];
+      setProducts(updatedProducts);
+      showToast('Nouveau vêtement ajouté avec succès au catalogue et en boutique !');
     }
 
+    // Persistance immédiate et garantie en stockage local
+    try {
+      localStorage.setItem('byafrika_products', JSON.stringify(updatedProducts));
+    } catch (err) {
+      console.warn('Erreur sauvegarde locale produits:', err);
+    }
+
+    // Synchronisation Cloud Supabase
     try {
       await supabase.from('products').upsert([prodData]);
-    } catch (e) { }
+    } catch (e) {
+      console.warn('Erreur synchronisation Supabase produit:', e);
+    }
 
     setShowProductFormModal(false);
     setEditingProduct(null);
@@ -909,13 +991,16 @@ export default function ByAfrikaPage() {
   // ── FILTRAGE DES PRODUITS CLIENT ──
   const getFilteredProducts = () => {
     return products.filter(p => {
-      if (activePage === 'hommes' && p.genre !== 'Homme' && p.genre !== 'Unisexe') return false;
-      if (activePage === 'femmes' && p.genre !== 'Femme' && p.genre !== 'Unisexe') return false;
-      if (filterGenre && filterGenre !== 'Tous' && p.genre !== filterGenre && p.genre !== 'Unisexe') return false;
-      if (filterCategory && filterCategory !== 'Toutes' && p.category !== filterCategory) return false;
+      const pGenre = (p.genre || 'Unisexe').toLowerCase();
+      const pCat = (p.category || '').toLowerCase();
+
+      if (activePage === 'hommes' && pGenre !== 'homme' && pGenre !== 'unisexe') return false;
+      if (activePage === 'femmes' && pGenre !== 'femme' && pGenre !== 'unisexe') return false;
+      if (filterGenre && filterGenre.toLowerCase() !== 'tous' && pGenre !== filterGenre.toLowerCase() && pGenre !== 'unisexe') return false;
+      if (filterCategory && filterCategory.toLowerCase() !== 'toutes' && pCat !== filterCategory.toLowerCase()) return false;
       if (searchQuery) {
         const q = searchQuery.toLowerCase();
-        return p.name.toLowerCase().includes(q) || (p.description && p.description.toLowerCase().includes(q));
+        return (p.name || '').toLowerCase().includes(q) || ((p.description || '').toLowerCase().includes(q));
       }
       return true;
     });
@@ -3510,6 +3595,25 @@ export default function ByAfrikaPage() {
                     );
                   })}
                 </div>
+              </div>
+
+              <div className="form-group full-width" style={{ marginTop: 14, background: '#f8fafc', padding: '12px 14px', borderRadius: 8, border: '1px solid #e2e8f0' }}>
+                <label style={{ display: 'inline-flex', alignItems: 'center', gap: 10, cursor: 'pointer', margin: 0 }}>
+                  <input
+                    type="checkbox"
+                    name="featured"
+                    defaultChecked={editingProduct ? editingProduct.featured : true}
+                    style={{ width: 18, height: 18, accentColor: '#dfba5c', cursor: 'pointer' }}
+                  />
+                  <div>
+                    <span style={{ fontWeight: 700, fontSize: '0.9rem', color: '#1e293b', display: 'block' }}>
+                      Afficher en vedette sur l'Accueil (Collections Stars)
+                    </span>
+                    <span style={{ fontSize: '0.78rem', color: '#64748b' }}>
+                      L'article sera visible dans la Boutique générale et mis en avant sur l'Accueil.
+                    </span>
+                  </div>
+                </label>
               </div>
 
               <div className="form-group full-width" style={{ marginTop: 12 }}>
