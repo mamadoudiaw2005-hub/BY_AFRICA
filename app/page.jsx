@@ -2018,7 +2018,7 @@ export default function ByAfrikaPage() {
         <div id="admin-view">
           <div className="admin-container">
             {/* Sidebar Admin */}
-            <aside className="admin-sidebar" style={{ display: 'block' }}>
+            <aside className="admin-sidebar">
               <div className="admin-sidebar-header">
                 <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
                   <img src="/logo.jpg" alt="BY_AFRIKA" className="admin-logo" />
@@ -2134,14 +2134,13 @@ export default function ByAfrikaPage() {
                 </div>
               </div>
 
-              {/* Navigation chips mobile admin */}
+              {/* Navigation onglets mobile admin */}
               <nav className="admin-mobile-chips-nav">
                 <button type="button" className={`admin-chip-btn ${adminTab === 'dashboard' ? 'active' : ''}`} onClick={() => setAdminTab('dashboard')}><i className="fa-solid fa-chart-line" /> Dashboard</button>
                 <button type="button" className={`admin-chip-btn ${adminTab === 'produits' ? 'active' : ''}`} onClick={() => setAdminTab('produits')}><i className="fa-solid fa-shirt" /> Produits</button>
                 <button type="button" className={`admin-chip-btn ${adminTab === 'commandes' ? 'active' : ''}`} onClick={() => setAdminTab('commandes')}><i className="fa-solid fa-box" /> Commandes</button>
                 <button type="button" className={`admin-chip-btn ${adminTab === 'messages' ? 'active' : ''}`} onClick={() => setAdminTab('messages')}><i className="fa-solid fa-headset" /> Messages</button>
-                <button type="button" className={`admin-chip-btn ${adminTab === 'config' ? 'active' : ''}`} onClick={() => setAdminTab('config')}><i className="fa-solid fa-gear" /> Config</button>
-                <button type="button" className="admin-chip-btn" onClick={handleLogout} style={{ color: '#ef4444', borderColor: 'rgba(239,68,68,0.4)', background: 'rgba(239,68,68,0.06)' }}><i className="fa-solid fa-arrow-right-from-bracket" /> Déconnexion</button>
+                <button type="button" className={`admin-chip-btn ${adminTab === 'config' ? 'active' : ''}`} onClick={() => setAdminTab('config')}><i className="fa-solid fa-gear" /> Configuration</button>
               </nav>
 
               {/* TAB : DASHBOARD */}
@@ -2722,10 +2721,11 @@ export default function ByAfrikaPage() {
                       </div>
                     </div>
 
-                    <div className="form-actions" style={{ marginTop: 24 }}>
-                      <button type="submit" className="btn btn-primary" style={{ padding: '12px 28px', fontSize: '1rem' }}>
-                        <i className="fa-solid fa-save" /> Enregistrer toute la configuration
-                      </button>
+                    <div className="form-actions" style={{ marginTop: 24, textAlign: 'center', padding: '16px', background: 'rgba(16, 185, 129, 0.05)', borderRadius: 8, border: '1px solid rgba(16, 185, 129, 0.2)' }}>
+                      <p style={{ fontSize: '0.88rem', color: '#10b981', margin: 0, fontWeight: 600 }}>
+                        <i className="fa-solid fa-circle-check" style={{ marginRight: 6 }} />
+                        Vos modifications sont automatiquement sauvegardées en temps réel.
+                      </p>
                     </div>
                   </form>
                 </div>
