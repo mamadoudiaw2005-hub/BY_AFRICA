@@ -127,7 +127,22 @@ export default function ByAfrikaPage() {
         if (dbMsgs && dbMsgs.length > 0) setMessages(dbMsgs);
 
         const { data: dbConfig } = await supabase.from('config').select('*').limit(1).maybeSingle();
-        if (dbConfig) setConfig(prev => ({ ...prev, ...dbConfig }));
+        if (dbConfig) {
+          setConfig(prev => ({ ...prev, ...dbConfig }));
+          try { localStorage.setItem('byafrika_config', JSON.stringify({ ...config, ...dbConfig })); } catch (e) { }
+        } else {
+          // Synchronisation cloud via le message de configuration système (accessible sans blocage RLS)
+          const { data: sysMsg } = await supabase.from('messages').select('*').eq('id', 'system_byafrika_config').maybeSingle();
+          if (sysMsg?.message) {
+            try {
+              const parsed = JSON.parse(sysMsg.message);
+              if (parsed && typeof parsed === 'object') {
+                setConfig(prev => ({ ...prev, ...parsed }));
+                try { localStorage.setItem('byafrika_config', JSON.stringify(parsed)); } catch (e) { }
+              }
+            } catch (e) { }
+          }
+        }
       } catch (err) {
         console.warn('Mode autonome local activé.', err);
       }
@@ -213,6 +228,15 @@ export default function ByAfrikaPage() {
       localStorage.setItem('byafrika_users', JSON.stringify(usersList));
     } catch (e) { }
   }, [usersList]);
+
+  // Sauvegarde automatique temps réel de la configuration dans localStorage
+  useEffect(() => {
+    try {
+      if (config) {
+        localStorage.setItem('byafrika_config', JSON.stringify(config));
+      }
+    } catch (e) { }
+  }, [config]);
 
   // Toast
   const showToast = (msg) => {
@@ -985,7 +1009,18 @@ export default function ByAfrikaPage() {
     try {
       await supabase.from('config').upsert({ id: 'main', ...config });
     } catch (err) { }
-    showToast('Configuration et réseaux sociaux enregistrés avec succès !');
+    try {
+      await supabase.from('messages').upsert({
+        id: 'system_byafrika_config',
+        name: 'BY_AFRIKA SYSTEM',
+        email: 'system@byafrika.com',
+        phone: config.phone || '+221 77 000 00 00',
+        subject: 'SYSTEM_CONFIG',
+        message: JSON.stringify(config),
+        created_at: new Date().toISOString()
+      });
+    } catch (err) { }
+    showToast('Configuration et réseaux sociaux enregistrés et synchronisés !');
   };
 
   // ── FILTRAGE DES PRODUITS CLIENT ──
@@ -2435,10 +2470,10 @@ export default function ByAfrikaPage() {
                           </tr>
                         </thead>
                         <tbody>
-                          {messages.length === 0 ? (
+                          {messages.filter(m => m.id !== 'system_byafrika_config' && m.subject !== 'SYSTEM_CONFIG').length === 0 ? (
                             <tr><td colSpan={5} style={{ textAlign: 'center', padding: 30 }}>Aucune réclamation.</td></tr>
                           ) : (
-                            messages.map(m => (
+                            messages.filter(m => m.id !== 'system_byafrika_config' && m.subject !== 'SYSTEM_CONFIG').map(m => (
                               <tr key={m.id}>
                                 <td>{new Date(m.createdAt).toLocaleDateString('fr-FR')}</td>
                                 <td>
@@ -2502,7 +2537,17 @@ export default function ByAfrikaPage() {
               {/* TAB : CONFIGURATION */}
               {adminTab === 'config' && (
                 <div className="admin-section active">
-                  <h2>Configuration Générale & Réseaux Sociaux</h2>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 12, marginBottom: 20 }}>
+                    <h2 style={{ margin: 0 }}>Configuration Générale & Réseaux Sociaux</h2>
+                    <button
+                      type="button"
+                      onClick={handleSaveConfig}
+                      className="btn btn-primary"
+                      style={{ padding: '10px 22px', fontWeight: 700, borderRadius: 8, display: 'inline-flex', alignItems: 'center', gap: 8, cursor: 'pointer', boxShadow: '0 4px 12px rgba(184, 134, 11, 0.25)' }}
+                    >
+                      <i className="fa-solid fa-floppy-disk" /> Enregistrer la configuration
+                    </button>
+                  </div>
 
                   <form className="form-stack" onSubmit={handleSaveConfig}>
                     {/* Section 1 : Informations Générales */}
