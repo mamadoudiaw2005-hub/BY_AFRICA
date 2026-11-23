@@ -2171,8 +2171,8 @@ export default function ByAfrikaPage() {
                       </p>
                     </div>
 
-                    {/* Grille des KPI Clés */}
-                    <div className="admin-stats" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 16, marginBottom: 32 }}>
+                    {/* Grille des KPI Clés Responsive */}
+                    <div className="admin-stats admin-stats-grid">
                       {/* 1. Chiffre d'Affaires */}
                       <div className="stat-card" style={{ borderLeft: '4px solid #dfba5c' }}>
                         <i className="fa-solid fa-coins" style={{ color: '#dfba5c', fontSize: '1.6rem' }} />
@@ -2234,8 +2234,8 @@ export default function ByAfrikaPage() {
                       </div>
                     </div>
 
-                    {/* Bloc d'Analyse des Livraisons & Performance */}
-                    <div style={{ background: '#ffffff', border: '1px solid var(--border-color)', borderRadius: 12, padding: 24, marginBottom: 28, boxShadow: '0 2px 8px rgba(0,0,0,0.04)' }}>
+                    {/* Bloc d'Analyse des Livraisons & Performance Responsive */}
+                    <div className="admin-delivery-card">
                       <h2 style={{ fontSize: '1.15rem', fontWeight: 700, margin: '0 0 16px 0', display: 'flex', alignItems: 'center', gap: 8 }}>
                         <i className="fa-solid fa-chart-pie" style={{ color: '#dfba5c' }} />
                         Répartition des Modes de Livraison
@@ -2247,7 +2247,7 @@ export default function ByAfrikaPage() {
                         <div style={{ width: `${pickupPct}%`, backgroundColor: '#f59e0b', transition: 'width 0.4s' }} title={`Sans livraison: ${pickupPct}%`} />
                       </div>
 
-                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 14 }}>
+                      <div className="admin-delivery-grid">
                         <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 16px', background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: 8 }}>
                           <i className="fa-solid fa-truck-fast" style={{ color: '#10b981', fontSize: '1.4rem' }} />
                           <div>
@@ -2274,7 +2274,7 @@ export default function ByAfrikaPage() {
                       </div>
 
                       {/* Raccourcis rapides d'administration */}
-                      <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginTop: 20, paddingTop: 16, borderTop: '1px solid #f0f0f0' }}>
+                      <div className="admin-shortcuts-grid">
                         <button
                           type="button"
                           className="btn btn-primary"
@@ -2330,17 +2330,17 @@ export default function ByAfrikaPage() {
                       <tbody>
                         {products.map(p => (
                           <tr key={p.id}>
-                            <td>
+                            <td data-label="Image">
                               <img src={getSafeImage(p.image)} alt={p.name} style={{ width: 44, height: 44, borderRadius: 6, objectFit: 'cover' }} />
                             </td>
-                            <td><strong>{p.name}</strong></td>
-                            <td><span className="badge-type">{p.genre}</span></td>
-                            <td>{p.category}</td>
-                            <td><strong style={{ color: '#c49a26' }}>{formatPrice(p.price)}</strong></td>
-                            <td>{p.stock} pcs</td>
-                            <td>
-                              <button type="button" className="btn btn-sm btn-outline" style={{ marginRight: 6 }} onClick={() => openEditProductModal(p)}>Modifier</button>
-                              <button type="button" className="btn btn-sm btn-outline" style={{ color: '#ef4444' }} onClick={() => handleDeleteProduct(p.id)}>Supprimer</button>
+                            <td data-label="Article"><strong>{p.name}</strong></td>
+                            <td data-label="Genre"><span className="badge-type">{p.genre}</span></td>
+                            <td data-label="Catégorie">{p.category}</td>
+                            <td data-label="Prix"><strong style={{ color: '#c49a26' }}>{formatPrice(p.price)}</strong></td>
+                            <td data-label="Stock">{p.stock} pcs</td>
+                            <td data-label="Actions">
+                              <button type="button" className="btn btn-sm btn-outline" style={{ marginRight: 6 }} onClick={() => openEditProductModal(p)}><i className="fa-solid fa-pen-to-square" /> Modifier</button>
+                              <button type="button" className="btn btn-sm btn-outline" style={{ color: '#ef4444' }} onClick={() => handleDeleteProduct(p.id)}><i className="fa-solid fa-trash-can" /> Supprimer</button>
                             </td>
                           </tr>
                         ))}
@@ -2397,13 +2397,19 @@ export default function ByAfrikaPage() {
                         ) : (
                           orders.map(o => (
                             <tr key={o.id}>
-                              <td><strong>{o.id}</strong></td>
-                              <td>{new Date(o.createdAt).toLocaleDateString('fr-FR')}</td>
-                              <td>{o.customer?.name}</td>
-                              <td>{o.customer?.phone}</td>
-                              <td>{o.deliveryType}</td>
-                              <td><strong style={{ color: '#c49a26' }}>{formatPrice(o.total)}</strong></td>
-                              <td>
+                              <td data-label="N° Commande"><strong>{o.id}</strong></td>
+                              <td data-label="Date">{new Date(o.createdAt).toLocaleDateString('fr-FR')}</td>
+                              <td data-label="Client">{o.customer?.name}</td>
+                              <td data-label="Téléphone">
+                                {o.customer?.phone ? (
+                                  <a href={`https://wa.me/${o.customer.phone.replace(/[^0-9]/g, '')}`} target="_blank" rel="noreferrer" style={{ color: '#25D366', fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                                    <i className="fa-brands fa-whatsapp" /> {o.customer.phone}
+                                  </a>
+                                ) : '-'}
+                              </td>
+                              <td data-label="Mode"><span className="badge-type">{o.deliveryType || 'Retrait'}</span></td>
+                              <td data-label="Total"><strong style={{ color: '#c49a26' }}>{formatPrice(o.total)}</strong></td>
+                              <td data-label="Statut">
                                 <select
                                   value={o.status}
                                   onChange={async (e) => {
@@ -2415,7 +2421,7 @@ export default function ByAfrikaPage() {
                                     showToast(`Commande ${o.id} passée à : ${val}`);
                                   }}
                                   className="form-input"
-                                  style={{ padding: '4px 8px', fontSize: '0.85rem' }}
+                                  style={{ padding: '6px 10px', fontSize: '0.85rem', width: 'auto', minWidth: 130 }}
                                 >
                                   <option value="Reçue">Reçue</option>
                                   <option value="En préparation">En préparation</option>
@@ -2424,7 +2430,7 @@ export default function ByAfrikaPage() {
                                   <option value="Annulée">Annulée</option>
                                 </select>
                               </td>
-                              <td>
+                              <td data-label="Actions">
                                 <button
                                   type="button"
                                   className="btn btn-sm btn-outline"
@@ -2432,7 +2438,7 @@ export default function ByAfrikaPage() {
                                   onClick={() => handleDeleteSingleOrder(o.id)}
                                   title="Supprimer cette commande"
                                 >
-                                  <i className="fa-solid fa-trash-can" />
+                                  <i className="fa-solid fa-trash-can" /> Supprimer
                                 </button>
                               </td>
                             </tr>
@@ -2474,23 +2480,23 @@ export default function ByAfrikaPage() {
                           ) : (
                             messages.filter(m => m.id !== 'system_byafrika_config' && m.subject !== 'SYSTEM_CONFIG').map(m => (
                               <tr key={m.id}>
-                                <td>{new Date(m.createdAt).toLocaleDateString('fr-FR')}</td>
-                                <td>
+                                <td data-label="Date">{new Date(m.createdAt).toLocaleDateString('fr-FR')}</td>
+                                <td data-label="Client">
                                   <strong>{m.name}</strong>
                                   <div style={{ fontSize: '0.8rem', color: '#666' }}>{m.phone}</div>
                                 </td>
-                                <td><span className="badge-type">{m.type}</span></td>
-                                <td style={{ maxWidth: 300 }}>{m.message}</td>
-                                <td>
+                                <td data-label="Motif"><span className="badge-type">{m.type}</span></td>
+                                <td data-label="Message" style={{ maxWidth: 300 }}>{m.message}</td>
+                                <td data-label="Réponse">
                                   {m.phone && (
                                     <a
                                       href={`https://wa.me/${m.phone.replace(/[^0-9]/g, '')}`}
                                       target="_blank"
                                       rel="noreferrer"
                                       className="btn btn-sm btn-outline"
-                                      style={{ color: '#25D366', borderColor: '#25D366' }}
+                                      style={{ color: '#25D366', borderColor: '#25D366', display: 'inline-flex', alignItems: 'center', gap: 6 }}
                                     >
-                                      <i className="fa-brands fa-whatsapp" /> Répondre
+                                      <i className="fa-brands fa-whatsapp" /> Répondre sur WhatsApp
                                     </a>
                                   )}
                                 </td>
@@ -2520,9 +2526,9 @@ export default function ByAfrikaPage() {
                           <tbody>
                             {usersList.map(u => (
                               <tr key={u.id}>
-                                <td><strong>{u.name}</strong></td>
-                                <td>{u.email}</td>
-                                <td><span className="badge-type">{u.role}</span></td>
+                                <td data-label="Nom"><strong>{u.name}</strong></td>
+                                <td data-label="Email">{u.email}</td>
+                                <td data-label="Rôle"><span className="badge-type">{u.role}</span></td>
                               </tr>
                             ))}
                           </tbody>
@@ -2536,7 +2542,7 @@ export default function ByAfrikaPage() {
               {/* TAB : CONFIGURATION */}
               {adminTab === 'config' && (
                 <div className="admin-section active">
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 12, marginBottom: 20 }}>
+                  <div className="config-header-row" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 12, marginBottom: 20 }}>
                     <h2 style={{ margin: 0 }}>Configuration Générale & Réseaux Sociaux</h2>
                     <button
                       type="button"
@@ -3499,7 +3505,7 @@ export default function ByAfrikaPage() {
       {/* 7. Modal Admin Ajout/Modification Produit (Mobile & Ordinateur) */}
       {showProductFormModal && (
         <div id="modal-admin-product" className="modal modal-admin-dialog" style={{ display: 'block' }}>
-          <div className="modal-content" style={{ padding: '24px' }}>
+          <div className="modal-content" style={{ padding: 0 }}>
             <button type="button" className="auth-modal-close-btn modal-close" onClick={() => setShowProductFormModal(false)}>
               <i className="fa-solid fa-xmark" />
             </button>
@@ -3519,7 +3525,7 @@ export default function ByAfrikaPage() {
                   <i className="fa-solid fa-camera" style={{ color: '#c49a26', marginRight: 6 }} />
                   Photo du Vêtement (depuis Téléphone ou Ordinateur)
                 </label>
-                <div style={{ display: 'flex', gap: 16, alignItems: 'center', flexWrap: 'wrap' }}>
+                <div className="admin-photo-picker-row" style={{ display: 'flex', gap: 16, alignItems: 'center', flexWrap: 'wrap' }}>
                   <div style={{ width: 88, height: 88, borderRadius: 10, overflow: 'hidden', border: '1px solid #d1d5db', backgroundColor: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
                     <img src={productFormImage || '/tshirt-byafrika.jpg'} alt="Aperçu vêtement" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
                   </div>
