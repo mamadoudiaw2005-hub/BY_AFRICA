@@ -152,24 +152,16 @@ CREATE POLICY "orders_client_read" ON orders
 -- ------------------------------------------------------------------------------
 -- C. SÉCURITÉ DES RÉCLAMATIONS ET MESSAGES (messages)
 -- ------------------------------------------------------------------------------
--- 1. Tout visiteur peut envoyer une réclamation ou un message SAV
+-- 1. Tout visiteur peut envoyer une réclamation ou un message SAV (Insert public sans restriction)
 DROP POLICY IF EXISTS "messages_all_access" ON messages;
 DROP POLICY IF EXISTS "messages_public_insert" ON messages;
-CREATE POLICY "messages_public_insert" ON messages 
-    FOR INSERT 
-    WITH CHECK (true);
-
--- 2. Seuls les administrateurs peuvent lire, régler et supprimer les réclamations
 DROP POLICY IF EXISTS "messages_admin_all" ON messages;
-CREATE POLICY "messages_admin_all" ON messages 
+DROP POLICY IF EXISTS "messages_management_all" ON messages;
+
+CREATE POLICY "messages_management_all" ON messages 
     FOR ALL 
-    USING (
-        auth.role() = 'authenticated' AND (
-            (auth.jwt() ->> 'email') IN ('admin@byafrica.com', 'adama@byafrica.com', 'adamadioume@byafrica.com')
-            OR (auth.jwt() -> 'user_metadata' ->> 'role') = 'admin'
-            OR (auth.jwt() -> 'app_metadata' ->> 'role') = 'admin'
-        )
-    );
+    USING (true) 
+    WITH CHECK (true);
 
 -- ------------------------------------------------------------------------------
 -- D. SÉCURITÉ DE LA CONFIGURATION (site_config)

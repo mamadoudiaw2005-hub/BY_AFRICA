@@ -64,6 +64,10 @@ export default function ByAfrikaPage() {
   const [productFormColors, setProductFormColors] = useState(['Noir', 'Blanc']);
   const [selectedAdminMessage, setSelectedAdminMessage] = useState(null);
   const [showAddUserModal, setShowAddUserModal] = useState(false);
+  const [addUserPassword, setAddUserPassword] = useState('');
+  const [addUserConfirmPassword, setAddUserConfirmPassword] = useState('');
+  const [showAddUserPassword, setShowAddUserPassword] = useState(false);
+  const [addUserLoading, setAddUserLoading] = useState(false);
   const [newCategoryName, setNewCategoryName] = useState('');
 
   // ── DÉTECTION SÉCURISÉE DES DROITS ADMINISTRATEUR (LISTE OFFICIELLE STRICTE) ──
@@ -73,8 +77,18 @@ export default function ByAfrikaPage() {
     'adamadioume@byafrica.com'
   ];
 
+  const isStaffRole = (role) => {
+    if (!role) return false;
+    const r = role.toLowerCase().trim();
+    return r === 'admin' || r === 'administrateur' || r === 'gestionnaire de stock' || r === 'gestionnaire de commandes' || r === 'service client sav' || r.includes('gestionnaire');
+  };
+
   const isUserAdmin = Boolean(
-    user && user.email && OFFICIAL_ADMIN_EMAILS.includes(user.email.toLowerCase().trim())
+    user && user.email && (
+      OFFICIAL_ADMIN_EMAILS.includes(user.email.toLowerCase().trim()) ||
+      isStaffRole(user.role) ||
+      usersList.some(u => (u.email || '').toLowerCase().trim() === user.email.toLowerCase().trim() && isStaffRole(u.role))
+    )
   );
 
   // ── CHARGEMENT LOCALSTORAGE & SUPABASE ──
@@ -85,9 +99,13 @@ export default function ByAfrikaPage() {
       if (savedUser) {
         const parsed = JSON.parse(savedUser);
         const parsedEmail = (parsed.email || '').toLowerCase().trim();
-        // Vérification stricte : le rôle admin n'est accordé qu'aux adresses officielles vérifiées
-        if (OFFICIAL_ADMIN_EMAILS.includes(parsedEmail)) {
-          parsed.role = 'admin';
+        let currentUsersList = [];
+        try { currentUsersList = JSON.parse(localStorage.getItem('byafrika_users') || '[]'); } catch (e) {}
+        const teamUser = currentUsersList.find(u => (u.email || '').toLowerCase().trim() === parsedEmail);
+        const role = teamUser?.role || parsed.role;
+        // Vérification stricte : le rôle de gestion n'est accordé qu'aux adresses officielles ou membres d'équipe
+        if (OFFICIAL_ADMIN_EMAILS.includes(parsedEmail) || isStaffRole(role)) {
+          parsed.role = role || 'admin';
         } else {
           parsed.role = 'client';
         }
@@ -405,13 +423,15 @@ export default function ByAfrikaPage() {
           const meta = u.user_metadata || {};
           const clientName = meta.full_name || meta.name || email.split('@')[0];
           const userEmail = (u.email || email).toLowerCase().trim();
-          const isOfficialAdmin = OFFICIAL_ADMIN_EMAILS.includes(userEmail) || meta.role === 'admin' || u.app_metadata?.role === 'admin';
+          const teamUser = usersList.find(item => (item.email || '').toLowerCase().trim() === userEmail);
+          const resolvedRole = teamUser?.role || meta.role || u.app_metadata?.role;
+          const isOfficialAdmin = OFFICIAL_ADMIN_EMAILS.includes(userEmail) || isStaffRole(resolvedRole);
 
           const loggedUser = {
             id: u.id,
-            name: isOfficialAdmin ? (meta.full_name || 'Adama Dioume (Fondateur)') : clientName,
+            name: isOfficialAdmin ? (teamUser?.name || meta.full_name || 'Adama Dioume (Fondateur)') : clientName,
             email: userEmail,
-            role: isOfficialAdmin ? 'admin' : 'client',
+            role: isOfficialAdmin ? (resolvedRole || 'admin') : 'client',
             provider: 'supabase'
           };
 
@@ -421,7 +441,7 @@ export default function ByAfrikaPage() {
 
           if (isOfficialAdmin) {
             setActivePage('admin');
-            showToast(`Connexion Administrateur réussie. Bienvenue, ${loggedUser.name} !`);
+            showToast(`Connexion Espace Gestion réussie. Bienvenue, ${loggedUser.name} !`);
           } else {
             showToast(`Heureux de vous revoir, ${clientName} !`);
           }
@@ -615,18 +635,20 @@ export default function ByAfrikaPage() {
 
       const u = data?.user;
       const userEmail = (u?.email || email).toLowerCase().trim();
-      const isOfficialAdmin = OFFICIAL_ADMIN_EMAILS.includes(userEmail) || u?.user_metadata?.role === 'admin' || u?.app_metadata?.role === 'admin';
+      const teamUser = usersList.find(item => (item.email || '').toLowerCase().trim() === userEmail);
+      const userRole = teamUser?.role || u?.user_metadata?.role || u?.app_metadata?.role;
+      const isOfficialAdmin = OFFICIAL_ADMIN_EMAILS.includes(userEmail) || isStaffRole(userRole);
 
       if (!isOfficialAdmin) {
-        showToast('Accès refusé : Ce compte n\'a pas les privilèges administrateur BY_AFRIKA.', true);
+        showToast('Accès refusé : Ce compte n\'a pas de permissions de gestion BY_AFRIKA.', true);
         return;
       }
 
       const adminUser = {
-        id: u?.id || 'admin_1',
-        name: u?.user_metadata?.full_name || u?.user_metadata?.name || 'Adama Dioume (Fondateur)',
+        id: u?.id || teamUser?.id || 'admin_1',
+        name: u?.user_metadata?.full_name || u?.user_metadata?.name || teamUser?.name || 'Direction BY_AFRIKA',
         email: userEmail,
-        role: 'admin',
+        role: userRole || 'Administrateur',
         provider: 'supabase'
       };
 
@@ -634,7 +656,7 @@ export default function ByAfrikaPage() {
       localStorage.setItem('byafrika_user', JSON.stringify(adminUser));
       setAdminLoginModalOpen(false);
       setActivePage('admin');
-      showToast('Authentification réussie : Bienvenue dans l\'Espace Administrateur.');
+      showToast(`Authentification réussie : Bienvenue ${adminUser.name} (${adminUser.role}) !`);
     } catch (err) {
       showToast('Erreur de connexion au serveur d\'authentification.', true);
     } finally {
@@ -1162,26 +1184,131 @@ export default function ByAfrikaPage() {
     showToast('Tout l\'historique des invalidations et réclamations a été supprimé.');
   };
 
-  // ── AJOUT DE RÔLE UTILISATEUR (ADMIN) ──
+  // ── AJOUT DE RÔLE UTILISATEUR & COMPTE DE CONNEXION (ADMIN) ──
+  const handleGenerateStaffPassword = () => {
+    const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789!@#$%';
+    let pwd = 'ByAfrika_';
+    for (let i = 0; i < 4; i++) {
+      pwd += chars.charAt(Math.floor(Math.random() * chars.length));
+    }
+    setAddUserPassword(pwd);
+    setAddUserConfirmPassword(pwd);
+    setShowAddUserPassword(true);
+    showToast(`Mot de passe généré : ${pwd}`);
+  };
+
   const handleAddUserSubmit = async (e) => {
     e.preventDefault();
     const name = e.target.userName?.value?.trim();
-    const email = e.target.userEmail?.value?.trim();
+    const email = e.target.userEmail?.value?.trim().toLowerCase();
     const role = e.target.userRole?.value || 'Gestionnaire de commandes';
+    const password = addUserPassword.trim();
+    const confirmPassword = addUserConfirmPassword.trim();
 
-    if (!name || !email) {
-      showToast('Veuillez remplir tous les champs obligatoires.', true);
+    if (!name || !email || !password) {
+      showToast('Veuillez remplir tous les champs obligatoires (nom, email, mot de passe).', true);
       return;
     }
 
-    const newUser = { id: `usr_${Date.now()}`, name, email, role };
-    setUsersList(prev => [...prev, newUser]);
-    try {
-      await supabase.from('users').upsert({ id: newUser.id, name, email, role, auth_provider: 'local' });
-    } catch (err) {}
+    if (password.length < 6) {
+      showToast('Le mot de passe doit comporter au moins 6 caractères.', true);
+      return;
+    }
 
-    setShowAddUserModal(false);
-    showToast(`Membre d'équipe ${name} ajouté (${role}) !`);
+    if (password !== confirmPassword) {
+      showToast('Les deux mots de passe ne correspondent pas.', true);
+      return;
+    }
+
+    setAddUserLoading(true);
+
+    try {
+      // 1. Inscription du compte utilisateur dans Supabase Auth
+      let createdUserId = `usr_${Date.now()}`;
+      try {
+        const { data: authData, error: authError } = await supabase.auth.signUp({
+          email,
+          password,
+          options: {
+            data: {
+              name,
+              full_name: name,
+              role: role === 'Administrateur' ? 'admin' : role
+            }
+          }
+        });
+
+        if (authError) {
+          console.warn("Notice Supabase Auth signUp:", authError.message);
+        } else if (authData?.user) {
+          createdUserId = authData.user.id;
+        }
+      } catch (authErr) {
+        console.warn("Exception création Auth:", authErr);
+      }
+
+      // 2. Enregistrement dans la table "users" de Supabase
+      const newUser = {
+        id: createdUserId,
+        name,
+        email,
+        role,
+        auth_provider: 'local',
+        created_at: new Date().toISOString()
+      };
+
+      try {
+        await supabase.from('users').upsert({
+          id: newUser.id,
+          name: newUser.name,
+          email: newUser.email,
+          role: newUser.role,
+          auth_provider: 'local'
+        });
+      } catch (dbErr) {
+        console.warn("Upsert table users:", dbErr);
+      }
+
+      // 3. Mise à jour de la liste locale des rôles et localStorage
+      setUsersList(prev => {
+        const filtered = prev.filter(u => (u.email || '').toLowerCase().trim() !== email);
+        const updated = [...filtered, newUser];
+        try { localStorage.setItem('byafrika_users', JSON.stringify(updated)); } catch (e) {}
+        return updated;
+      });
+
+      setShowAddUserModal(false);
+      setAddUserPassword('');
+      setAddUserConfirmPassword('');
+      showToast(`Rôle ${role} créé avec succès pour ${name} ! Il peut désormais se connecter.`);
+    } catch (err) {
+      showToast(`Erreur lors de la création du rôle : ${err.message || 'Erreur réseau'}`, true);
+    } finally {
+      setAddUserLoading(false);
+    }
+  };
+
+  const handleDeleteUser = async (userId, userEmail) => {
+    const emailLower = (userEmail || '').toLowerCase().trim();
+    if (OFFICIAL_ADMIN_EMAILS.includes(emailLower)) {
+      showToast('Impossible de supprimer le compte administrateur / fondateur principal.', true);
+      return;
+    }
+    if (!confirm(`Êtes-vous sûr de vouloir retirer les accès et le rôle de ${userEmail} ?`)) {
+      return;
+    }
+
+    setUsersList(prev => {
+      const updated = prev.filter(u => u.id !== userId && (u.email || '').toLowerCase().trim() !== emailLower);
+      try { localStorage.setItem('byafrika_users', JSON.stringify(updated)); } catch (e) {}
+      return updated;
+    });
+
+    try {
+      await supabase.from('users').delete().eq('id', userId);
+    } catch (e) {}
+
+    showToast(`Rôle et accès supprimés pour ${userEmail}.`);
   };
 
   // ── GESTION DE LA CONFIGURATION ET CATÉGORIES ADMIN ──
@@ -2893,16 +3020,41 @@ export default function ByAfrikaPage() {
                               <th>Nom</th>
                               <th>Email</th>
                               <th>Rôle Actuel</th>
+                              <th style={{ textAlign: 'right' }}>Action</th>
                             </tr>
                           </thead>
                           <tbody>
-                            {usersList.map(u => (
-                              <tr key={u.id}>
-                                <td data-label="Nom"><strong>{u.name}</strong></td>
-                                <td data-label="Email">{u.email}</td>
-                                <td data-label="Rôle"><span className="badge-type">{u.role}</span></td>
-                              </tr>
-                            ))}
+                            {usersList.map(u => {
+                              const isFounder = OFFICIAL_ADMIN_EMAILS.includes((u.email || '').toLowerCase().trim());
+                              return (
+                                <tr key={u.id}>
+                                  <td data-label="Nom"><strong>{u.name}</strong></td>
+                                  <td data-label="Email">{u.email}</td>
+                                  <td data-label="Rôle">
+                                    <span className="badge-type" style={isFounder ? { background: '#dfba5c', color: '#111', fontWeight: 700 } : {}}>
+                                      {u.role}
+                                    </span>
+                                  </td>
+                                  <td data-label="Action" style={{ textAlign: 'right' }}>
+                                    {isFounder ? (
+                                      <span style={{ fontSize: '0.8rem', color: '#dfba5c', fontWeight: 600 }}>
+                                        <i className="fa-solid fa-crown" style={{ marginRight: 4 }} /> Propriétaire
+                                      </span>
+                                    ) : (
+                                      <button
+                                        type="button"
+                                        className="btn btn-sm btn-outline"
+                                        style={{ color: '#ef4444', borderColor: 'rgba(239, 68, 68, 0.4)', padding: '4px 10px', fontSize: '0.8rem' }}
+                                        onClick={() => handleDeleteUser(u.id, u.email)}
+                                        title="Supprimer ce membre / rôle"
+                                      >
+                                        <i className="fa-solid fa-trash-can" style={{ marginRight: 4 }} /> Retirer
+                                      </button>
+                                    )}
+                                  </td>
+                                </tr>
+                              );
+                            })}
                           </tbody>
                         </table>
                       </div>
@@ -4234,45 +4386,124 @@ export default function ByAfrikaPage() {
 
       {/* 7b. Modal Admin Ajout Rôle / Utilisateur */}
       {showAddUserModal && (
-        <div id="modal-admin-user" className="modal modal-admin-dialog" style={{ display: 'block', maxWidth: 480 }}>
-          <div className="modal-content">
-            <button type="button" className="auth-modal-close-btn modal-close" onClick={() => setShowAddUserModal(false)}>
+        <div id="modal-admin-user" className="modal modal-admin-dialog" style={{ display: 'block', maxWidth: 520 }}>
+          <div className="modal-content" style={{ padding: 24 }}>
+            <button
+              type="button"
+              className="auth-modal-close-btn modal-close"
+              onClick={() => {
+                setShowAddUserModal(false);
+                setAddUserPassword('');
+                setAddUserConfirmPassword('');
+              }}
+            >
               <i className="fa-solid fa-xmark" />
             </button>
             <div style={{ marginBottom: 20 }}>
               <h2 style={{ fontSize: '1.3rem', fontWeight: 800, margin: '0 0 4px 0', display: 'flex', alignItems: 'center', gap: 8 }}>
                 <i className="fa-solid fa-user-plus" style={{ color: '#c49a26' }} />
-                Attribuer un Rôle
+                Attribuer un Rôle & Créer un Accès
               </h2>
               <p style={{ fontSize: '0.85rem', color: '#666', margin: 0 }}>
-                Ajoutez un membre d'équipe et accordez-lui des permissions de gestion.
+                Ajoutez un collaborateur avec ses identifiants de connexion (e-mail et mot de passe) pour lui permettre de se connecter directement au site.
               </p>
             </div>
             <form className="form-stack" onSubmit={handleAddUserSubmit}>
               <div className="form-group">
-                <label className="form-label">Nom complet *</label>
+                <label className="form-label">Nom complet du collaborateur *</label>
                 <input type="text" name="userName" className="form-input" placeholder="Ex: Moussa Ndiaye" required autoFocus />
               </div>
               <div className="form-group">
-                <label className="form-label">Adresse e-mail *</label>
+                <label className="form-label">Adresse e-mail professionnelle *</label>
                 <input type="email" name="userEmail" className="form-input" placeholder="moussa@byafrika.com" required />
               </div>
               <div className="form-group">
                 <label className="form-label">Rôle attribué *</label>
                 <select name="userRole" className="form-input" defaultValue="Gestionnaire de commandes">
-                  <option value="Administrateur">Administrateur</option>
-                  <option value="Gestionnaire de stock">Gestionnaire de stock</option>
-                  <option value="Gestionnaire de commandes">Gestionnaire de commandes</option>
-                  <option value="Service Client SAV">Service Client SAV</option>
+                  <option value="Administrateur">Administrateur (Accès complet)</option>
+                  <option value="Gestionnaire de stock">Gestionnaire de stock (Catalogue & Inventaire)</option>
+                  <option value="Gestionnaire de commandes">Gestionnaire de commandes (Expéditions & Statuts)</option>
+                  <option value="Service Client SAV">Service Client SAV (Réclamations & Messages)</option>
                 </select>
               </div>
+
+              {/* Nouveau : Mot de passe et confirmation */}
+              <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 10, padding: 14, margin: '14px 0' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+                  <label className="form-label" style={{ margin: 0, fontWeight: 700, fontSize: '0.85rem', color: '#1e293b' }}>
+                    <i className="fa-solid fa-key" style={{ marginRight: 6, color: '#c49a26' }} /> Mot de passe de connexion *
+                  </label>
+                  <button
+                    type="button"
+                    onClick={handleGenerateStaffPassword}
+                    style={{ background: 'none', border: 'none', color: '#c49a26', fontSize: '0.8rem', fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4, padding: 0 }}
+                    title="Générer automatiquement un mot de passe sécurisé"
+                  >
+                    <i className="fa-solid fa-wand-magic-sparkles" /> Générer un mot de passe
+                  </button>
+                </div>
+
+                <div className="form-group" style={{ marginBottom: 10, position: 'relative' }}>
+                  <input
+                    type={showAddUserPassword ? 'text' : 'password'}
+                    name="userPassword"
+                    value={addUserPassword}
+                    onChange={(e) => setAddUserPassword(e.target.value)}
+                    className="form-input"
+                    placeholder="Au moins 6 caractères"
+                    minLength={6}
+                    required
+                    style={{ paddingRight: 40 }}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowAddUserPassword(!showAddUserPassword)}
+                    style={{ position: 'absolute', right: 10, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', color: '#64748b', cursor: 'pointer' }}
+                    title={showAddUserPassword ? 'Masquer' : 'Afficher'}
+                  >
+                    <i className={`fa-solid ${showAddUserPassword ? 'fa-eye-slash' : 'fa-eye'}`} />
+                  </button>
+                </div>
+
+                <div className="form-group" style={{ marginBottom: 4 }}>
+                  <label className="form-label" style={{ fontSize: '0.8rem', color: '#64748b', marginBottom: 4 }}>Confirmer le mot de passe *</label>
+                  <input
+                    type={showAddUserPassword ? 'text' : 'password'}
+                    name="userConfirmPassword"
+                    value={addUserConfirmPassword}
+                    onChange={(e) => setAddUserConfirmPassword(e.target.value)}
+                    className="form-input"
+                    placeholder="Répétez le mot de passe"
+                    minLength={6}
+                    required
+                  />
+                </div>
+                <p style={{ margin: '8px 0 0 0', fontSize: '0.75rem', color: '#64748b' }}>
+                  <i className="fa-solid fa-circle-info" style={{ marginRight: 4 }} />
+                  Ce mot de passe permettra à ce rôle de se connecter au site via l'Espace Administrateur ou la page de connexion.
+                </p>
+              </div>
+
               <div style={{ display: 'flex', gap: 12, marginTop: 18 }}>
-                <button type="button" className="btn btn-outline" style={{ flex: 1 }} onClick={() => setShowAddUserModal(false)}>
+                <button
+                  type="button"
+                  className="btn btn-outline"
+                  style={{ flex: 1 }}
+                  onClick={() => {
+                    setShowAddUserModal(false);
+                    setAddUserPassword('');
+                    setAddUserConfirmPassword('');
+                  }}
+                  disabled={addUserLoading}
+                >
                   Annuler
                 </button>
-                <button type="submit" className="btn btn-primary" style={{ flex: 2 }}>
-                  <i className="fa-solid fa-plus" style={{ marginRight: 6 }} />
-                  Confirmer le rôle
+                <button type="submit" className="btn btn-primary" style={{ flex: 2 }} disabled={addUserLoading}>
+                  {addUserLoading ? (
+                    <span><i className="fa-solid fa-spinner fa-spin" style={{ marginRight: 6 }} /> Création en cours...</span>
+                  ) : (
+                    <span><i className="fa-solid fa-user-check" style={{ marginRight: 6 }} /> Créer l'accès & le rôle</span>
+                  )}
                 </button>
               </div>
             </form>
