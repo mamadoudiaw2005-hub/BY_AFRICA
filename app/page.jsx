@@ -66,16 +66,15 @@ export default function ByAfrikaPage() {
   const [showAddUserModal, setShowAddUserModal] = useState(false);
   const [newCategoryName, setNewCategoryName] = useState('');
 
-  // ── DÉTECTION DROITS ADMINISTRATEUR ──
+  // ── DÉTECTION SÉCURISÉE DES DROITS ADMINISTRATEUR (LISTE OFFICIELLE STRICTE) ──
+  const OFFICIAL_ADMIN_EMAILS = [
+    'admin@byafrica.com',
+    'adama@byafrica.com',
+    'adamadioume@byafrica.com'
+  ];
+
   const isUserAdmin = Boolean(
-    user && (
-      user.role === 'admin' ||
-      user.role === 'Admin' ||
-      user.role === 'fondateur' ||
-      user.name?.toUpperCase() === 'ADMIN' ||
-      user.email?.toLowerCase().includes('admin') ||
-      user.email === 'admin@byafrica.com'
-    )
+    user && user.email && OFFICIAL_ADMIN_EMAILS.includes(user.email.toLowerCase().trim())
   );
 
   // ── CHARGEMENT LOCALSTORAGE & SUPABASE ──
@@ -85,8 +84,12 @@ export default function ByAfrikaPage() {
       const savedUser = localStorage.getItem('byafrika_user');
       if (savedUser) {
         const parsed = JSON.parse(savedUser);
-        if (parsed.name?.toUpperCase() === 'ADMIN' || parsed.email?.toLowerCase().includes('admin')) {
+        const parsedEmail = (parsed.email || '').toLowerCase().trim();
+        // Vérification stricte : le rôle admin n'est accordé qu'aux adresses officielles vérifiées
+        if (OFFICIAL_ADMIN_EMAILS.includes(parsedEmail)) {
           parsed.role = 'admin';
+        } else {
+          parsed.role = 'client';
         }
         setUser(parsed);
       }
@@ -201,12 +204,8 @@ export default function ByAfrikaPage() {
         const u = session.user;
         const metadata = u.user_metadata || {};
         const fullName = metadata.full_name || metadata.name || u.email?.split('@')[0] || 'Client';
-        const isFounderOrAdmin = (
-          u.email?.toLowerCase().includes('admin') ||
-          u.email?.toLowerCase().includes('adama') ||
-          u.email === 'admin@byafrica.com' ||
-          metadata.role === 'admin'
-        );
+        const userEmail = (u.email || '').toLowerCase().trim();
+        const isFounderOrAdmin = OFFICIAL_ADMIN_EMAILS.includes(userEmail) || metadata.role === 'admin';
         const resolvedUser = {
           id: u.id,
           name: fullName,
@@ -376,27 +375,7 @@ export default function ByAfrikaPage() {
     const pwd = e.target.password?.value?.trim() || '';
 
     if (authTab === 'login') {
-      // 1. Connexion Administrateur Rapide
-      const isMatchAdmin = (
-        email.toLowerCase().includes('admin') ||
-        email.toLowerCase().includes('adama') ||
-        pwd === 'admin123' ||
-        pwd === 'byafrika2026' ||
-        pwd === 'Admin2026' ||
-        pwd === 'admin'
-      );
-
-      if (isMatchAdmin) {
-        const adminUser = { id: 'admin_1', name: 'Adama Dioume (Fondateur)', email: 'admin@byafrica.com', role: 'admin' };
-        setUser(adminUser);
-        localStorage.setItem('byafrika_user', JSON.stringify(adminUser));
-        setAuthModalOpen(false);
-        setActivePage('admin');
-        showToast('Connecté avec succès en tant qu\'Administrateur.');
-        return;
-      }
-
-      // 2. Connexion Client via Supabase Auth
+      // Authentification sécurisée exclusive via Supabase Auth
       setAuthLoading(true);
       try {
         const { data, error } = await supabase.auth.signInWithPassword({
@@ -419,40 +398,36 @@ export default function ByAfrikaPage() {
             });
             showToast('Identifiants incorrects.', true);
           } else {
-            // Mode autonome local
-            const fallbackUser = {
-              id: `usr_${Date.now()}`,
-              name: email.split('@')[0],
-              email,
-              role: 'client'
-            };
-            setUser(fallbackUser);
-            localStorage.setItem('byafrika_user', JSON.stringify(fallbackUser));
-            setAuthModalOpen(false);
-            showToast(`Bienvenue, ${fallbackUser.name} !`);
+            showToast(`Erreur d'authentification : ${error.message}`, true);
           }
         } else if (data?.user) {
           const u = data.user;
           const meta = u.user_metadata || {};
           const clientName = meta.full_name || meta.name || email.split('@')[0];
+          const userEmail = (u.email || email).toLowerCase().trim();
+          const isOfficialAdmin = OFFICIAL_ADMIN_EMAILS.includes(userEmail) || meta.role === 'admin' || u.app_metadata?.role === 'admin';
+
           const loggedUser = {
             id: u.id,
-            name: clientName,
-            email: u.email,
-            role: 'client',
-            provider: 'email'
+            name: isOfficialAdmin ? (meta.full_name || 'Adama Dioume (Fondateur)') : clientName,
+            email: userEmail,
+            role: isOfficialAdmin ? 'admin' : 'client',
+            provider: 'supabase'
           };
+
           setUser(loggedUser);
           localStorage.setItem('byafrika_user', JSON.stringify(loggedUser));
           setAuthModalOpen(false);
-          showToast(`Heureux de vous revoir, ${clientName} !`);
+
+          if (isOfficialAdmin) {
+            setActivePage('admin');
+            showToast(`Connexion Administrateur réussie. Bienvenue, ${loggedUser.name} !`);
+          } else {
+            showToast(`Heureux de vous revoir, ${clientName} !`);
+          }
         }
       } catch (err) {
-        const fallbackUser = { id: `usr_${Date.now()}`, name: email.split('@')[0], email, role: 'client' };
-        setUser(fallbackUser);
-        localStorage.setItem('byafrika_user', JSON.stringify(fallbackUser));
-        setAuthModalOpen(false);
-        showToast(`Bienvenue, ${fallbackUser.name} !`);
+        showToast('Erreur de connexion sécurisée au serveur.', true);
       } finally {
         setAuthLoading(false);
       }
@@ -615,25 +590,55 @@ export default function ByAfrikaPage() {
     }
   };
 
-  const handleAdminLoginForm = (e) => {
+  const handleAdminLoginForm = async (e) => {
     e.preventDefault();
     const email = e.target.adminEmail?.value?.trim() || '';
     const pwd = e.target.adminPassword?.value?.trim() || '';
 
-    const isMatch = (
-      (email.toLowerCase().includes('admin') || email.toLowerCase().includes('adama') || email.toLowerCase() === 'admin@byafrica.com') &&
-      (pwd === 'admin123' || pwd === 'byafrika2026' || pwd === 'Admin2026' || pwd === 'admin')
-    );
+    if (!email || !pwd) {
+      showToast('Veuillez renseigner votre e-mail et mot de passe administrateur.', true);
+      return;
+    }
 
-    if (isMatch) {
-      const adminUser = { id: 'admin_1', name: 'Adama Dioume (Fondateur)', email: 'admin@byafrica.com', role: 'admin' };
+    setAuthLoading(true);
+    try {
+      // Authentification sécurisée officielle via Supabase Auth (mots de passe hachés bcrypt)
+      const { data, error } = await supabase.auth.signInWithPassword({
+        email,
+        password: pwd
+      });
+
+      if (error) {
+        showToast('Identifiants administrateur incorrects : vérifiez votre mot de passe.', true);
+        return;
+      }
+
+      const u = data?.user;
+      const userEmail = (u?.email || email).toLowerCase().trim();
+      const isOfficialAdmin = OFFICIAL_ADMIN_EMAILS.includes(userEmail) || u?.user_metadata?.role === 'admin' || u?.app_metadata?.role === 'admin';
+
+      if (!isOfficialAdmin) {
+        showToast('Accès refusé : Ce compte n\'a pas les privilèges administrateur BY_AFRIKA.', true);
+        return;
+      }
+
+      const adminUser = {
+        id: u?.id || 'admin_1',
+        name: u?.user_metadata?.full_name || u?.user_metadata?.name || 'Adama Dioume (Fondateur)',
+        email: userEmail,
+        role: 'admin',
+        provider: 'supabase'
+      };
+
       setUser(adminUser);
       localStorage.setItem('byafrika_user', JSON.stringify(adminUser));
       setAdminLoginModalOpen(false);
       setActivePage('admin');
       showToast('Authentification réussie : Bienvenue dans l\'Espace Administrateur.');
-    } else {
-      showToast('Identifiants administrateur incorrects.');
+    } catch (err) {
+      showToast('Erreur de connexion au serveur d\'authentification.', true);
+    } finally {
+      setAuthLoading(false);
     }
   };
 
@@ -696,11 +701,12 @@ export default function ByAfrikaPage() {
     const email = e.target.googleEmail?.value?.trim() || '';
     const name = e.target.googleName?.value?.trim() || email.split('@')[0];
 
+    const isOfficialAdmin = OFFICIAL_ADMIN_EMAILS.includes(email.toLowerCase().trim());
     const googleUser = {
       id: `usr_google_${Date.now()}`,
       name,
       email,
-      role: (name.toLowerCase().includes('admin') || email.toLowerCase().includes('admin')) ? 'admin' : 'client',
+      role: isOfficialAdmin ? 'admin' : 'client',
       provider: 'google'
     };
     setUser(googleUser);

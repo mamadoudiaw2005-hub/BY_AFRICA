@@ -1,8 +1,11 @@
 -- ==============================================================================
--- SCHEMA SUPABASE OFFICIEL POUR BY_AFRIKA (E-Commerce Premium)
+-- SCHEMA SUPABASE OFFICIEL & DURCI (SÉCURITÉ PRODUCTION) POUR BY_AFRIKA
 -- ==============================================================================
--- Ce script SQL permet de créer toutes les tables nécessaires dans votre projet Supabase.
--- Pour l'exécuter :
+-- Ce script SQL configure l'ensemble des tables et applique les politiques
+-- de sécurité Row-Level Security (RLS) de niveau production pour protéger
+-- les données personnelles des clients, les commandes et le catalogue.
+-- ==============================================================================
+-- INSTRUCTIONS :
 -- 1. Rendez-vous sur votre tableau de bord Supabase : https://supabase.com
 -- 2. Allez dans la section "SQL Editor"
 -- 3. Collez ce script complet et cliquez sur "Run" (Exécuter).
@@ -75,37 +78,162 @@ CREATE TABLE IF NOT EXISTS site_config (
 );
 
 -- ==============================================================================
--- ACTIVATION DE ROW LEVEL SECURITY (RLS) & POLITIQUES D'ACCÈS
+-- POLITIQUES DE SÉCURITÉ DE PRODUCTION (ROW LEVEL SECURITY - RLS)
 -- ==============================================================================
 
+-- Activation de RLS sur toutes les tables
 ALTER TABLE products ENABLE ROW LEVEL SECURITY;
 ALTER TABLE orders ENABLE ROW LEVEL SECURITY;
 ALTER TABLE users ENABLE ROW LEVEL SECURITY;
 ALTER TABLE messages ENABLE ROW LEVEL SECURITY;
 ALTER TABLE site_config ENABLE ROW LEVEL SECURITY;
 
--- Politiques pour la table "products" (Lecture publique, écriture autorisée pour le backend/admin)
+-- ------------------------------------------------------------------------------
+-- A. SÉCURITÉ DU CATALOGUE (products)
+-- ------------------------------------------------------------------------------
+-- 1. Tout le monde peut voir les vêtements en boutique (Lecture publique)
 DROP POLICY IF EXISTS "products_all_access" ON products;
-CREATE POLICY "products_all_access" ON products FOR ALL USING (true) WITH CHECK (true);
+DROP POLICY IF EXISTS "products_public_read" ON products;
+CREATE POLICY "products_public_read" ON products 
+    FOR SELECT 
+    USING (true);
 
--- Politiques pour la table "orders"
+-- 2. Seul l'administrateur authentifié peut ajouter, modifier ou supprimer un article
+DROP POLICY IF EXISTS "products_admin_write" ON products;
+CREATE POLICY "products_admin_write" ON products 
+    FOR ALL 
+    USING (
+        auth.role() = 'authenticated' AND (
+            (auth.jwt() ->> 'email') IN ('admin@byafrica.com', 'adama@byafrica.com', 'adamadioume@byafrica.com')
+            OR (auth.jwt() -> 'user_metadata' ->> 'role') = 'admin'
+            OR (auth.jwt() -> 'app_metadata' ->> 'role') = 'admin'
+        )
+    )
+    WITH CHECK (
+        auth.role() = 'authenticated' AND (
+            (auth.jwt() ->> 'email') IN ('admin@byafrica.com', 'adama@byafrica.com', 'adamadioume@byafrica.com')
+            OR (auth.jwt() -> 'user_metadata' ->> 'role') = 'admin'
+            OR (auth.jwt() -> 'app_metadata' ->> 'role') = 'admin'
+        )
+    );
+
+-- ------------------------------------------------------------------------------
+-- B. SÉCURITÉ DES COMMANDES (orders)
+-- ------------------------------------------------------------------------------
+-- 1. Tout client (visiteur ou connecté) peut passer commande (Création publique)
 DROP POLICY IF EXISTS "orders_all_access" ON orders;
-CREATE POLICY "orders_all_access" ON orders FOR ALL USING (true) WITH CHECK (true);
+DROP POLICY IF EXISTS "orders_public_insert" ON orders;
+CREATE POLICY "orders_public_insert" ON orders 
+    FOR INSERT 
+    WITH CHECK (true);
 
--- Politiques pour la table "users"
-DROP POLICY IF EXISTS "users_all_access" ON users;
-CREATE POLICY "users_all_access" ON users FOR ALL USING (true) WITH CHECK (true);
+-- 2. Les administrateurs peuvent voir, modifier le statut et gérer toutes les commandes
+DROP POLICY IF EXISTS "orders_admin_all" ON orders;
+CREATE POLICY "orders_admin_all" ON orders 
+    FOR ALL 
+    USING (
+        auth.role() = 'authenticated' AND (
+            (auth.jwt() ->> 'email') IN ('admin@byafrica.com', 'adama@byafrica.com', 'adamadioume@byafrica.com')
+            OR (auth.jwt() -> 'user_metadata' ->> 'role') = 'admin'
+            OR (auth.jwt() -> 'app_metadata' ->> 'role') = 'admin'
+        )
+    );
 
--- Politiques pour la table "messages"
+-- 3. Un client connecté ne peut consulter QUE ses propres commandes
+DROP POLICY IF EXISTS "orders_client_read" ON orders;
+CREATE POLICY "orders_client_read" ON orders 
+    FOR SELECT 
+    USING (
+        auth.role() = 'authenticated' AND (
+            customer ->> 'email' = (auth.jwt() ->> 'email')
+        )
+    );
+
+-- ------------------------------------------------------------------------------
+-- C. SÉCURITÉ DES RÉCLAMATIONS ET MESSAGES (messages)
+-- ------------------------------------------------------------------------------
+-- 1. Tout visiteur peut envoyer une réclamation ou un message SAV
 DROP POLICY IF EXISTS "messages_all_access" ON messages;
-CREATE POLICY "messages_all_access" ON messages FOR ALL USING (true) WITH CHECK (true);
+DROP POLICY IF EXISTS "messages_public_insert" ON messages;
+CREATE POLICY "messages_public_insert" ON messages 
+    FOR INSERT 
+    WITH CHECK (true);
 
--- Politiques pour la table "site_config"
+-- 2. Seuls les administrateurs peuvent lire, régler et supprimer les réclamations
+DROP POLICY IF EXISTS "messages_admin_all" ON messages;
+CREATE POLICY "messages_admin_all" ON messages 
+    FOR ALL 
+    USING (
+        auth.role() = 'authenticated' AND (
+            (auth.jwt() ->> 'email') IN ('admin@byafrica.com', 'adama@byafrica.com', 'adamadioume@byafrica.com')
+            OR (auth.jwt() -> 'user_metadata' ->> 'role') = 'admin'
+            OR (auth.jwt() -> 'app_metadata' ->> 'role') = 'admin'
+        )
+    );
+
+-- ------------------------------------------------------------------------------
+-- D. SÉCURITÉ DE LA CONFIGURATION (site_config)
+-- ------------------------------------------------------------------------------
+-- 1. Lecture publique pour afficher les coordonnées, réseaux sociaux et livraison
 DROP POLICY IF EXISTS "site_config_all_access" ON site_config;
-CREATE POLICY "site_config_all_access" ON site_config FOR ALL USING (true) WITH CHECK (true);
+DROP POLICY IF EXISTS "site_config_public_read" ON site_config;
+CREATE POLICY "site_config_public_read" ON site_config 
+    FOR SELECT 
+    USING (true);
+
+-- 2. Modification réservée exclusivement à l'administrateur
+DROP POLICY IF EXISTS "site_config_admin_write" ON site_config;
+CREATE POLICY "site_config_admin_write" ON site_config 
+    FOR ALL 
+    USING (
+        auth.role() = 'authenticated' AND (
+            (auth.jwt() ->> 'email') IN ('admin@byafrica.com', 'adama@byafrica.com', 'adamadioume@byafrica.com')
+            OR (auth.jwt() -> 'user_metadata' ->> 'role') = 'admin'
+            OR (auth.jwt() -> 'app_metadata' ->> 'role') = 'admin'
+        )
+    )
+    WITH CHECK (
+        auth.role() = 'authenticated' AND (
+            (auth.jwt() ->> 'email') IN ('admin@byafrica.com', 'adama@byafrica.com', 'adamadioume@byafrica.com')
+            OR (auth.jwt() -> 'user_metadata' ->> 'role') = 'admin'
+            OR (auth.jwt() -> 'app_metadata' ->> 'role') = 'admin'
+        )
+    );
+
+-- ------------------------------------------------------------------------------
+-- E. SÉCURITÉ DES COMPTES UTILISATEURS (users)
+-- ------------------------------------------------------------------------------
+DROP POLICY IF EXISTS "users_all_access" ON users;
+DROP POLICY IF EXISTS "users_self_read_write" ON users;
+DROP POLICY IF EXISTS "users_admin_all" ON users;
+
+CREATE POLICY "users_self_read_write" ON users 
+    FOR ALL 
+    USING (
+        auth.role() = 'authenticated' AND (
+            id = auth.uid()::text 
+            OR email = (auth.jwt() ->> 'email')
+        )
+    )
+    WITH CHECK (
+        auth.role() = 'authenticated' AND (
+            id = auth.uid()::text 
+            OR email = (auth.jwt() ->> 'email')
+        )
+    );
+
+CREATE POLICY "users_admin_all" ON users 
+    FOR ALL 
+    USING (
+        auth.role() = 'authenticated' AND (
+            (auth.jwt() ->> 'email') IN ('admin@byafrica.com', 'adama@byafrica.com', 'adamadioume@byafrica.com')
+            OR (auth.jwt() -> 'user_metadata' ->> 'role') = 'admin'
+            OR (auth.jwt() -> 'app_metadata' ->> 'role') = 'admin'
+        )
+    );
 
 -- ==============================================================================
--- INDEX POUR ACCÉLÉRER LES RECHERCHES
+-- INDEX D'OPTIMISATION DE PERFORMANCE
 -- ==============================================================================
 CREATE INDEX IF NOT EXISTS idx_products_category ON products(category);
 CREATE INDEX IF NOT EXISTS idx_products_created_at ON products(created_at DESC);
