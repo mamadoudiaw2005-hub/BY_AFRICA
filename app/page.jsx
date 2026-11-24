@@ -25,6 +25,8 @@ export default function ByAfrikaPage() {
   const [cartOpen, setCartOpen] = useState(false);
   const [cart, setCart] = useState([]);
   const [productModal, setProductModal] = useState(null);
+  const [fullscreenProduct, setFullscreenProduct] = useState(null);
+  const [isImageZoomed, setIsImageZoomed] = useState(false);
   const [selectedSize, setSelectedSize] = useState('M');
   const [selectedColor, setSelectedColor] = useState('Noir');
   const [selectedQty, setSelectedQty] = useState(1);
@@ -237,6 +239,22 @@ export default function ByAfrikaPage() {
       }
     } catch (e) { }
   }, [config]);
+
+  // Fermeture du plein écran et des modales avec la touche Échap
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      if (e.key === 'Escape') {
+        if (fullscreenProduct) {
+          setFullscreenProduct(null);
+          setIsImageZoomed(false);
+        } else if (productModal) {
+          setProductModal(null);
+        }
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [fullscreenProduct, productModal]);
 
   // Toast
   const showToast = (msg) => {
@@ -1062,6 +1080,19 @@ export default function ByAfrikaPage() {
             alt={p.name}
             onError={(e) => { e.target.src = '/tshirt-byafrika.jpg'; }}
           />
+          <button
+            type="button"
+            className="btn-card-expand"
+            title="Voir en plein écran"
+            aria-label="Voir en plein écran"
+            onClick={(e) => {
+              e.stopPropagation();
+              setFullscreenProduct(p);
+              setIsImageZoomed(false);
+            }}
+          >
+            <i className="fa-solid fa-expand" />
+          </button>
         </div>
         <div className="product-card-info">
           <span className="product-card-genre">{p.category || 'Vêtement'}</span>
@@ -2312,7 +2343,16 @@ export default function ByAfrikaPage() {
                         {products.map(p => (
                           <tr key={p.id}>
                             <td data-label="Image">
-                              <img src={getSafeImage(p.image)} alt={p.name} style={{ width: 44, height: 44, borderRadius: 6, objectFit: 'cover' }} />
+                              <img
+                                src={getSafeImage(p.image)}
+                                alt={p.name}
+                                style={{ width: 44, height: 44, borderRadius: 6, objectFit: 'cover', cursor: 'zoom-in' }}
+                                title="Cliquer pour voir en plein écran"
+                                onClick={() => {
+                                  setFullscreenProduct(p);
+                                  setIsImageZoomed(false);
+                                }}
+                              />
                             </td>
                             <td data-label="Article"><strong>{p.name}</strong></td>
                             <td data-label="Genre"><span className="badge-type">{p.genre}</span></td>
@@ -2789,12 +2829,28 @@ export default function ByAfrikaPage() {
               <i className="fa-solid fa-xmark" />
             </button>
             <div className="product-modal-layout">
-              <div className="product-modal-img">
+              <div className="product-modal-img" style={{ position: 'relative' }}>
                 <img
                   src={getSafeImage(productModal.image)}
                   alt={productModal.name}
+                  style={{ cursor: 'zoom-in' }}
+                  title="Cliquer pour voir en plein écran"
+                  onClick={() => {
+                    setFullscreenProduct(productModal);
+                    setIsImageZoomed(false);
+                  }}
                   onError={(e) => { e.target.src = '/tshirt-byafrika.jpg'; }}
                 />
+                <button
+                  type="button"
+                  className="btn-modal-fullscreen"
+                  onClick={() => {
+                    setFullscreenProduct(productModal);
+                    setIsImageZoomed(false);
+                  }}
+                >
+                  <i className="fa-solid fa-expand" /> Voir en plein écran
+                </button>
               </div>
               <div className="product-modal-info">
                 <h2>{productModal.name}</h2>
@@ -2856,6 +2912,107 @@ export default function ByAfrikaPage() {
                 </button>
               </div>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* 2.1 Modal Plein Écran Haute Définition avec Zoom */}
+      {fullscreenProduct && (
+        <div
+          className="product-fullscreen-backdrop"
+          onClick={() => {
+            setFullscreenProduct(null);
+            setIsImageZoomed(false);
+          }}
+        >
+          {/* Barre supérieure */}
+          <div className="fullscreen-topbar" onClick={(e) => e.stopPropagation()}>
+            <div className="fullscreen-product-info">
+              <span className="fullscreen-badge">{fullscreenProduct.category || fullscreenProduct.genre || 'Vêtement'}</span>
+              <h3 className="fullscreen-title">{fullscreenProduct.name}</h3>
+              <span className="fullscreen-price">{formatPrice(fullscreenProduct.price)}</span>
+            </div>
+            <div className="fullscreen-actions">
+              <button
+                type="button"
+                className="fullscreen-action-btn"
+                onClick={() => setIsImageZoomed(!isImageZoomed)}
+                title={isImageZoomed ? 'Dézoomer' : 'Zoomer 2x'}
+              >
+                <i className={`fa-solid ${isImageZoomed ? 'fa-magnifying-glass-minus' : 'fa-magnifying-glass-plus'}`} />
+                <span>{isImageZoomed ? 'Zoom 1x' : 'Zoom 2x'}</span>
+              </button>
+              <button
+                type="button"
+                className="fullscreen-close-btn"
+                onClick={() => {
+                  setFullscreenProduct(null);
+                  setIsImageZoomed(false);
+                }}
+                title="Fermer (Échap)"
+                aria-label="Fermer le plein écran"
+              >
+                <i className="fa-solid fa-xmark" />
+              </button>
+            </div>
+          </div>
+
+          {/* Zone Image */}
+          <div
+            className={`fullscreen-image-container ${isImageZoomed ? 'zoomed' : ''}`}
+            onClick={(e) => {
+              e.stopPropagation();
+              setIsImageZoomed(!isImageZoomed);
+            }}
+            title={isImageZoomed ? 'Cliquer pour dézoomer' : 'Cliquer pour agrandir les détails'}
+          >
+            <img
+              src={getSafeImage(fullscreenProduct.image)}
+              alt={fullscreenProduct.name}
+              className={`fullscreen-img ${isImageZoomed ? 'is-zoomed' : ''}`}
+              onError={(e) => { e.target.src = '/tshirt-byafrika.jpg'; }}
+            />
+            <div className="fullscreen-zoom-hint">
+              <i className="fa-solid fa-hand-pointer" style={{ marginRight: 6 }} />
+              {isImageZoomed ? 'Cliquez pour réduire (1x)' : 'Cliquez sur l\'image pour zoomer sur les détails (2x)'}
+            </div>
+          </div>
+
+          {/* Barre inférieure */}
+          <div className="fullscreen-bottombar" onClick={(e) => e.stopPropagation()}>
+            <button
+              type="button"
+              className="btn btn-outline"
+              style={{ background: 'rgba(25, 25, 25, 0.8)', borderColor: 'rgba(255,255,255,0.2)' }}
+              onClick={() => {
+                const target = fullscreenProduct;
+                setFullscreenProduct(null);
+                setIsImageZoomed(false);
+                setProductModal(target);
+                setSelectedSize(target.sizes?.[0] || 'M');
+                setSelectedColor(target.colors?.[0] || 'Noir');
+                setSelectedQty(1);
+              }}
+            >
+              <i className="fa-solid fa-sliders" /> Choisir taille & couleur
+            </button>
+            <button
+              type="button"
+              className="btn btn-primary"
+              onClick={() => {
+                addToCart(
+                  fullscreenProduct,
+                  fullscreenProduct.sizes?.[0] || 'M',
+                  fullscreenProduct.colors?.[0] || 'Noir',
+                  1
+                );
+                setFullscreenProduct(null);
+                setIsImageZoomed(false);
+                setCartOpen(true);
+              }}
+            >
+              <i className="fa-solid fa-cart-plus" /> Ajouter au panier • {formatPrice(fullscreenProduct.price)}
+            </button>
           </div>
         </div>
       )}
