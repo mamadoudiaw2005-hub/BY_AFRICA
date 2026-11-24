@@ -90,12 +90,21 @@ export default function ByAfrikaPage() {
       const savedCart = localStorage.getItem('byafrika_cart');
       if (savedCart) setCart(JSON.parse(savedCart));
 
+      // Liste persistante des IDs d'articles supprimés par l'administrateur
+      const savedDeletedIds = JSON.parse(localStorage.getItem('byafrika_deleted_product_ids') || '[]');
+
       const savedProducts = localStorage.getItem('byafrika_products');
       if (savedProducts) {
         try {
           const parsedProds = JSON.parse(savedProducts);
-          if (Array.isArray(parsedProds) && parsedProds.length > 0) setProducts(parsedProds);
+          if (Array.isArray(parsedProds)) {
+            const cleanProds = parsedProds.filter(p => !savedDeletedIds.includes(p.id));
+            setProducts(cleanProds);
+          }
         } catch (e) { }
+      } else {
+        // Ne jamais réafficher des articles que l'admin a explicitement supprimés
+        setProducts(DEFAULT_PRODUCTS.filter(p => !savedDeletedIds.includes(p.id)));
       }
 
       const savedOrders = localStorage.getItem('byafrika_orders');
@@ -116,8 +125,13 @@ export default function ByAfrikaPage() {
     // Synchronisation Supabase en arrière-plan
     const syncCloudData = async () => {
       try {
+        const savedDeletedIds = JSON.parse(localStorage.getItem('byafrika_deleted_product_ids') || '[]');
         const { data: dbProds } = await supabase.from('products').select('*');
-        if (dbProds && dbProds.length > 0) setProducts(dbProds);
+        if (dbProds && dbProds.length > 0) {
+          const cleanDbProds = dbProds.filter(p => !savedDeletedIds.includes(p.id));
+          setProducts(cleanDbProds);
+          try { localStorage.setItem('byafrika_products', JSON.stringify(cleanDbProds)); } catch (e) { }
+        }
 
         const { data: dbOrders } = await supabase.from('orders').select('*').order('created_at', { ascending: false });
         if (dbOrders && dbOrders.length > 0) setOrders(dbOrders);
@@ -128,12 +142,27 @@ export default function ByAfrikaPage() {
         const { data: dbMsgs } = await supabase.from('messages').select('*').order('created_at', { ascending: false });
         if (dbMsgs && dbMsgs.length > 0) setMessages(dbMsgs);
 
-        const { data: dbConfig } = await supabase.from('config').select('*').limit(1).maybeSingle();
-        if (dbConfig) {
-          setConfig(prev => ({ ...prev, ...dbConfig }));
-          try { localStorage.setItem('byafrika_config', JSON.stringify({ ...config, ...dbConfig })); } catch (e) { }
-        } else {
-          // Synchronisation cloud via le message de configuration système (accessible sans blocage RLS)
+        // Synchronisation de la configuration générale : lire d'abord site_config officiel
+        let configLoaded = false;
+        try {
+          const { data: dbSiteConfig } = await supabase.from('site_config').select('*').eq('id', 'main').maybeSingle();
+          if (dbSiteConfig?.data && typeof dbSiteConfig.data === 'object') {
+            setConfig(prev => ({ ...prev, ...dbSiteConfig.data }));
+            try { localStorage.setItem('byafrika_config', JSON.stringify(dbSiteConfig.data)); } catch (e) { }
+            configLoaded = true;
+          }
+        } catch (e) { }
+
+        if (!configLoaded) {
+          const { data: dbConfig } = await supabase.from('config').select('*').limit(1).maybeSingle();
+          if (dbConfig) {
+            setConfig(prev => ({ ...prev, ...dbConfig }));
+            try { localStorage.setItem('byafrika_config', JSON.stringify({ ...config, ...dbConfig })); } catch (e) { }
+            configLoaded = true;
+          }
+        }
+
+        if (!configLoaded) {
           const { data: sysMsg } = await supabase.from('messages').select('*').eq('id', 'system_byafrika_config').maybeSingle();
           if (sysMsg?.message) {
             try {
@@ -213,7 +242,7 @@ export default function ByAfrikaPage() {
 
   useEffect(() => {
     try {
-      if (products && products.length > 0) {
+      if (Array.isArray(products)) {
         localStorage.setItem('byafrika_products', JSON.stringify(products));
       }
     } catch (e) { }
@@ -910,6 +939,11 @@ export default function ByAfrikaPage() {
     // Persistance immédiate et garantie en stockage local
     try {
       localStorage.setItem('byafrika_products', JSON.stringify(updatedProducts));
+      // Si l'article avait été marqué supprimé, on le retire du registre des supprimés
+      const currentDeleted = JSON.parse(localStorage.getItem('byafrika_deleted_product_ids') || '[]');
+      if (currentDeleted.includes(prodData.id)) {
+        localStorage.setItem('byafrika_deleted_product_ids', JSON.stringify(currentDeleted.filter(d => d !== prodData.id)));
+      }
     } catch (err) {
       console.warn('Erreur sauvegarde locale produits:', err);
     }
@@ -927,11 +961,22 @@ export default function ByAfrikaPage() {
 
   const handleDeleteProduct = async (id) => {
     if (confirm('Voulez-vous vraiment supprimer cet article ?')) {
-      setProducts(prev => prev.filter(p => p.id !== id));
+      const updated = products.filter(p => p.id !== id);
+      setProducts(updated);
+      try {
+        // Enregistrer la liste mise à jour localement immédiatement
+        localStorage.setItem('byafrika_products', JSON.stringify(updated));
+        // Enregistrer l'ID dans le registre des articles supprimés pour empêcher toute résurrection
+        const currentDeleted = JSON.parse(localStorage.getItem('byafrika_deleted_product_ids') || '[]');
+        if (!currentDeleted.includes(id)) {
+          currentDeleted.push(id);
+          localStorage.setItem('byafrika_deleted_product_ids', JSON.stringify(currentDeleted));
+        }
+      } catch (e) { }
       try {
         await supabase.from('products').delete().eq('id', id);
       } catch (e) { }
-      showToast('Produit retiré du catalogue.');
+      showToast('Produit retiré du catalogue définitivement.');
     }
   };
 
@@ -1021,12 +1066,26 @@ export default function ByAfrikaPage() {
 
   const handleSaveConfig = async (e) => {
     if (e && e.preventDefault) e.preventDefault();
+    // 1. Sauvegarde locale immédiate garantie
     try {
       localStorage.setItem('byafrika_config', JSON.stringify(config));
     } catch (err) { }
+
+    // 2. Sauvegarde Cloud Supabase dans la table officielle site_config
+    try {
+      await supabase.from('site_config').upsert({
+        id: 'main',
+        data: config,
+        updated_at: new Date().toISOString()
+      });
+    } catch (err) { }
+
+    // 3. Sauvegarde dans table config alternative
     try {
       await supabase.from('config').upsert({ id: 'main', ...config });
     } catch (err) { }
+
+    // 4. Sauvegarde dans message système
     try {
       await supabase.from('messages').upsert({
         id: 'system_byafrika_config',
