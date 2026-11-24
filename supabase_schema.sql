@@ -50,10 +50,14 @@ CREATE TABLE IF NOT EXISTS users (
     address TEXT,
     password_hash TEXT,
     role TEXT DEFAULT 'client',
+    permissions JSONB DEFAULT '{}'::jsonb,
     notify_announcements BOOLEAN DEFAULT true,
     auth_provider TEXT DEFAULT 'local',
     created_at TIMESTAMPTZ DEFAULT NOW()
 );
+
+-- Assurer l'existence de la colonne permissions si la table existe déjà
+ALTER TABLE users ADD COLUMN IF NOT EXISTS permissions JSONB DEFAULT '{}'::jsonb;
 
 -- 4. Table des Messages & Réclamations clients (messages)
 CREATE TABLE IF NOT EXISTS messages (

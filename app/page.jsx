@@ -64,11 +64,22 @@ export default function ByAfrikaPage() {
   const [productFormColors, setProductFormColors] = useState(['Noir', 'Blanc']);
   const [selectedAdminMessage, setSelectedAdminMessage] = useState(null);
   const [showAddUserModal, setShowAddUserModal] = useState(false);
+  const [editingUser, setEditingUser] = useState(null);
   const [addUserPassword, setAddUserPassword] = useState('');
   const [addUserConfirmPassword, setAddUserConfirmPassword] = useState('');
   const [showAddUserPassword, setShowAddUserPassword] = useState(false);
   const [addUserLoading, setAddUserLoading] = useState(false);
   const [newCategoryName, setNewCategoryName] = useState('');
+
+  // ── GESTION DES PERMISSIONS LIMITÉES (RBAC - DÉFINIES PAR L'ADMIN) ──
+  const [rolePermissions, setRolePermissions] = useState({
+    dashboard: true,
+    products: false,
+    orders: true,
+    messages: false,
+    config: false,
+    roles: false
+  });
 
   // ── DÉTECTION SÉCURISÉE DES DROITS ADMINISTRATEUR (LISTE OFFICIELLE STRICTE) ──
   const OFFICIAL_ADMIN_EMAILS = [
@@ -83,6 +94,50 @@ export default function ByAfrikaPage() {
     return r === 'admin' || r === 'administrateur' || r === 'gestionnaire de stock' || r === 'gestionnaire de commandes' || r === 'service client sav' || r.includes('gestionnaire');
   };
 
+  const getEffectivePermissions = (u) => {
+    if (!u) return { dashboard: false, products: false, orders: false, messages: false, config: false, roles: false };
+    const emailLower = (u.email || '').toLowerCase().trim();
+
+    // Fondateur et emails officiels = accès total illimité
+    if (OFFICIAL_ADMIN_EMAILS.includes(emailLower) || u.role === 'admin' || (u.role === 'Administrateur' && !u.permissions)) {
+      return { dashboard: true, products: true, orders: true, messages: true, config: true, roles: true };
+    }
+
+    // Récupération des permissions personnalisées enregistrées par l'administrateur
+    const userInList = usersList.find(item => (item.email || '').toLowerCase().trim() === emailLower);
+    const customPerms = userInList?.permissions || u.permissions;
+    const roleName = (userInList?.role || u.role || '').toLowerCase();
+
+    if (customPerms && typeof customPerms === 'object' && Object.keys(customPerms).length > 0) {
+      return {
+        dashboard: customPerms.dashboard !== undefined ? Boolean(customPerms.dashboard) : true,
+        products: Boolean(customPerms.products),
+        orders: Boolean(customPerms.orders),
+        messages: Boolean(customPerms.messages),
+        config: Boolean(customPerms.config),
+        roles: Boolean(customPerms.roles)
+      };
+    }
+
+    // Permissions par défaut selon le rôle attribué
+    if (roleName.includes('admin')) {
+      return { dashboard: true, products: true, orders: true, messages: true, config: true, roles: true };
+    }
+    if (roleName.includes('stock')) {
+      return { dashboard: true, products: true, orders: false, messages: false, config: false, roles: false };
+    }
+    if (roleName.includes('commande')) {
+      return { dashboard: true, products: false, orders: true, messages: false, config: false, roles: false };
+    }
+    if (roleName.includes('sav') || roleName.includes('client')) {
+      return { dashboard: false, products: false, orders: false, messages: true, config: false, roles: false };
+    }
+
+    return { dashboard: false, products: false, orders: false, messages: false, config: false, roles: false };
+  };
+
+  const userPerms = getEffectivePermissions(user);
+
   const isUserAdmin = Boolean(
     user && user.email && (
       OFFICIAL_ADMIN_EMAILS.includes(user.email.toLowerCase().trim()) ||
@@ -90,6 +145,30 @@ export default function ByAfrikaPage() {
       usersList.some(u => (u.email || '').toLowerCase().trim() === user.email.toLowerCase().trim() && isStaffRole(u.role))
     )
   );
+
+  // Garde de navigation pour les collaborateurs aux accès limités
+  useEffect(() => {
+    if (activePage === 'admin') {
+      const canAccessCurrent = 
+        (adminTab === 'dashboard' && userPerms.dashboard) ||
+        (adminTab === 'produits' && userPerms.products) ||
+        (adminTab === 'commandes' && userPerms.orders) ||
+        (adminTab === 'messages' && userPerms.messages) ||
+        (adminTab === 'config' && userPerms.config);
+
+      if (!canAccessCurrent) {
+        if (userPerms.dashboard) setAdminTab('dashboard');
+        else if (userPerms.products) setAdminTab('produits');
+        else if (userPerms.orders) setAdminTab('commandes');
+        else if (userPerms.messages) setAdminTab('messages');
+        else if (userPerms.config) setAdminTab('config');
+      }
+
+      if (adminTab === 'messages' && adminSubTab === 'roles' && !userPerms.roles) {
+        setAdminSubTab('messages');
+      }
+    }
+  }, [activePage, adminTab, adminSubTab, userPerms.dashboard, userPerms.products, userPerms.orders, userPerms.messages, userPerms.config, userPerms.roles]);
 
   // ── CHARGEMENT LOCALSTORAGE & SUPABASE ──
   useEffect(() => {
@@ -1184,7 +1263,80 @@ export default function ByAfrikaPage() {
     showToast('Tout l\'historique des invalidations et réclamations a été supprimé.');
   };
 
-  // ── AJOUT DE RÔLE UTILISATEUR & COMPTE DE CONNEXION (ADMIN) ──
+  // ── AJOUT & MODIFICATION DE RÔLE UTILISATEUR AVEC ACCÈS LIMITÉS (ADMIN) ──
+  const openAddRoleModal = () => {
+    setEditingUser(null);
+    setAddUserPassword('');
+    setAddUserConfirmPassword('');
+    setShowAddUserPassword(false);
+    setRolePermissions({
+      dashboard: true,
+      products: false,
+      orders: true,
+      messages: false,
+      config: false,
+      roles: false
+    });
+    setShowAddUserModal(true);
+  };
+
+  const openEditRoleModal = (u) => {
+    setEditingUser(u);
+    setAddUserPassword('');
+    setAddUserConfirmPassword('');
+    setShowAddUserPassword(false);
+    const perms = u.permissions || getEffectivePermissions(u);
+    setRolePermissions(perms);
+    setShowAddUserModal(true);
+  };
+
+  const handleRolePresetChange = (selectedRole) => {
+    switch (selectedRole) {
+      case 'Administrateur':
+        setRolePermissions({
+          dashboard: true,
+          products: true,
+          orders: true,
+          messages: true,
+          config: true,
+          roles: true
+        });
+        break;
+      case 'Gestionnaire de stock':
+        setRolePermissions({
+          dashboard: true,
+          products: true,
+          orders: false,
+          messages: false,
+          config: false,
+          roles: false
+        });
+        break;
+      case 'Gestionnaire de commandes':
+        setRolePermissions({
+          dashboard: true,
+          products: false,
+          orders: true,
+          messages: false,
+          config: false,
+          roles: false
+        });
+        break;
+      case 'Service Client SAV':
+        setRolePermissions({
+          dashboard: false,
+          products: false,
+          orders: false,
+          messages: true,
+          config: false,
+          roles: false
+        });
+        break;
+      default:
+        break;
+    }
+  };
+
   const handleGenerateStaffPassword = () => {
     const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789!@#$%';
     let pwd = 'ByAfrika_';
@@ -1205,64 +1357,76 @@ export default function ByAfrikaPage() {
     const password = addUserPassword.trim();
     const confirmPassword = addUserConfirmPassword.trim();
 
-    if (!name || !email || !password) {
-      showToast('Veuillez remplir tous les champs obligatoires (nom, email, mot de passe).', true);
+    if (!name || !email) {
+      showToast('Veuillez renseigner le nom et l\'adresse e-mail.', true);
       return;
     }
 
-    if (password.length < 6) {
-      showToast('Le mot de passe doit comporter au moins 6 caractères.', true);
+    if (!editingUser && !password) {
+      showToast('Veuillez définir un mot de passe pour ce nouveau compte.', true);
       return;
     }
 
-    if (password !== confirmPassword) {
-      showToast('Les deux mots de passe ne correspondent pas.', true);
-      return;
+    if (password) {
+      if (password.length < 6) {
+        showToast('Le mot de passe doit comporter au moins 6 caractères.', true);
+        return;
+      }
+      if (password !== confirmPassword) {
+        showToast('Les deux mots de passe ne correspondent pas.', true);
+        return;
+      }
     }
 
     setAddUserLoading(true);
 
     try {
-      // 1. Inscription du compte utilisateur dans Supabase Auth
-      let createdUserId = `usr_${Date.now()}`;
-      try {
-        const { data: authData, error: authError } = await supabase.auth.signUp({
-          email,
-          password,
-          options: {
-            data: {
-              name,
-              full_name: name,
-              role: role === 'Administrateur' ? 'admin' : role
-            }
-          }
-        });
+      let userId = editingUser?.id || `usr_${Date.now()}`;
 
-        if (authError) {
-          console.warn("Notice Supabase Auth signUp:", authError.message);
-        } else if (authData?.user) {
-          createdUserId = authData.user.id;
+      // 1. Inscription du compte utilisateur dans Supabase Auth (si nouveau compte)
+      if (!editingUser && password) {
+        try {
+          const { data: authData, error: authError } = await supabase.auth.signUp({
+            email,
+            password,
+            options: {
+              data: {
+                name,
+                full_name: name,
+                role: role === 'Administrateur' ? 'admin' : role,
+                permissions: rolePermissions
+              }
+            }
+          });
+
+          if (authError) {
+            console.warn("Notice Supabase Auth signUp:", authError.message);
+          } else if (authData?.user) {
+            userId = authData.user.id;
+          }
+        } catch (authErr) {
+          console.warn("Exception création Auth:", authErr);
         }
-      } catch (authErr) {
-        console.warn("Exception création Auth:", authErr);
       }
 
-      // 2. Enregistrement dans la table "users" de Supabase
-      const newUser = {
-        id: createdUserId,
+      // 2. Enregistrement dans la table "users" de Supabase avec permissions limitées
+      const updatedUser = {
+        id: userId,
         name,
         email,
         role,
+        permissions: rolePermissions,
         auth_provider: 'local',
-        created_at: new Date().toISOString()
+        updated_at: new Date().toISOString()
       };
 
       try {
         await supabase.from('users').upsert({
-          id: newUser.id,
-          name: newUser.name,
-          email: newUser.email,
-          role: newUser.role,
+          id: updatedUser.id,
+          name: updatedUser.name,
+          email: updatedUser.email,
+          role: updatedUser.role,
+          permissions: updatedUser.permissions,
           auth_provider: 'local'
         });
       } catch (dbErr) {
@@ -1271,18 +1435,26 @@ export default function ByAfrikaPage() {
 
       // 3. Mise à jour de la liste locale des rôles et localStorage
       setUsersList(prev => {
-        const filtered = prev.filter(u => (u.email || '').toLowerCase().trim() !== email);
-        const updated = [...filtered, newUser];
+        const filtered = prev.filter(u => u.id !== userId && (u.email || '').toLowerCase().trim() !== email);
+        const updated = [...filtered, updatedUser];
         try { localStorage.setItem('byafrika_users', JSON.stringify(updated)); } catch (e) {}
         return updated;
       });
 
+      // Synchroniser session si c'est l'utilisateur actuellement connecté
+      if (user && (user.email || '').toLowerCase().trim() === email) {
+        const syncCurrent = { ...user, role: updatedUser.role, permissions: updatedUser.permissions };
+        setUser(syncCurrent);
+        try { localStorage.setItem('byafrika_user', JSON.stringify(syncCurrent)); } catch (e) {}
+      }
+
       setShowAddUserModal(false);
+      setEditingUser(null);
       setAddUserPassword('');
       setAddUserConfirmPassword('');
-      showToast(`Rôle ${role} créé avec succès pour ${name} ! Il peut désormais se connecter.`);
+      showToast(editingUser ? `Accès et permissions de ${name} mis à jour avec succès !` : `Rôle ${role} créé pour ${name} avec accès limités personnalisés !`);
     } catch (err) {
-      showToast(`Erreur lors de la création du rôle : ${err.message || 'Erreur réseau'}`, true);
+      showToast(`Erreur lors de l'enregistrement du rôle : ${err.message || 'Erreur réseau'}`, true);
     } finally {
       setAddUserLoading(false);
     }
@@ -2143,29 +2315,33 @@ export default function ByAfrikaPage() {
                           Panneau de Contrôle Administrateur
                         </h2>
                         <p style={{ color: '#aaa', margin: 0, fontSize: '0.9rem' }}>
-                          Vous disposez des droits complets d'administration : catalogue de vêtements, commandes clients, réclamations et configuration.
+                          {userPerms.products && userPerms.orders && userPerms.config
+                            ? "Vous disposez des droits complets d'administration : catalogue de vêtements, commandes clients, réclamations et configuration."
+                            : `Espace de gestion avec accès limités : ${user?.role || 'Collaborateur'}.`}
                         </p>
                       </div>
                       <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
-                        <button
-                          type="button"
-                          className="btn btn-primary"
-                          onClick={openAddProductModal}
-                          style={{
-                            padding: '12px 20px',
-                            fontSize: '0.92rem',
-                            fontWeight: 700,
-                            display: 'inline-flex',
-                            alignItems: 'center',
-                            gap: 8,
-                            backgroundColor: '#dfba5c',
-                            color: '#111',
-                            border: 'none',
-                            borderRadius: 8
-                          }}
-                        >
-                          <i className="fa-solid fa-plus-circle" /> + Ajouter un Vêtement
-                        </button>
+                        {userPerms.products && (
+                          <button
+                            type="button"
+                            className="btn btn-primary"
+                            onClick={openAddProductModal}
+                            style={{
+                              padding: '12px 20px',
+                              fontSize: '0.92rem',
+                              fontWeight: 700,
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: 8,
+                              backgroundColor: '#dfba5c',
+                              color: '#111',
+                              border: 'none',
+                              borderRadius: 8
+                            }}
+                          >
+                            <i className="fa-solid fa-plus-circle" /> + Ajouter un Vêtement
+                          </button>
+                        )}
                         <button
                           type="button"
                           className="btn btn-outline"
@@ -2187,48 +2363,58 @@ export default function ByAfrikaPage() {
                       </div>
                     </div>
 
-                    {/* Raccourcis directs vers tous les contrôles */}
+                    {/* Raccourcis directs vers les contrôles autorisés */}
                     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 12 }}>
-                      <button
-                        type="button"
-                        className="btn btn-outline"
-                        onClick={() => { setAdminTab('dashboard'); setActivePage('admin'); }}
-                        style={{ color: '#fff', borderColor: '#444', justifyContent: 'flex-start', padding: '12px 16px', display: 'flex', alignItems: 'center', gap: 8 }}
-                      >
-                        <i className="fa-solid fa-chart-line" style={{ color: '#dfba5c' }} /> Tableau de bord
-                      </button>
-                      <button
-                        type="button"
-                        className="btn btn-outline"
-                        onClick={() => { setAdminTab('produits'); setActivePage('admin'); }}
-                        style={{ color: '#fff', borderColor: '#444', justifyContent: 'flex-start', padding: '12px 16px', display: 'flex', alignItems: 'center', gap: 8 }}
-                      >
-                        <i className="fa-solid fa-shirt" style={{ color: '#dfba5c' }} /> Gérer les Produits ({products.length})
-                      </button>
-                      <button
-                        type="button"
-                        className="btn btn-outline"
-                        onClick={() => { setAdminTab('commandes'); setActivePage('admin'); }}
-                        style={{ color: '#fff', borderColor: '#444', justifyContent: 'flex-start', padding: '12px 16px', display: 'flex', alignItems: 'center', gap: 8 }}
-                      >
-                        <i className="fa-solid fa-box" style={{ color: '#dfba5c' }} /> Commandes Clients ({orders.length})
-                      </button>
-                      <button
-                        type="button"
-                        className="btn btn-outline"
-                        onClick={() => { setAdminTab('messages'); setActivePage('admin'); }}
-                        style={{ color: '#fff', borderColor: '#444', justifyContent: 'flex-start', padding: '12px 16px', display: 'flex', alignItems: 'center', gap: 8 }}
-                      >
-                        <i className="fa-solid fa-headset" style={{ color: '#dfba5c' }} /> Messages & SAV ({messages.length})
-                      </button>
-                      <button
-                        type="button"
-                        className="btn btn-outline"
-                        onClick={() => { setAdminTab('config'); setActivePage('admin'); }}
-                        style={{ color: '#fff', borderColor: '#444', justifyContent: 'flex-start', padding: '12px 16px', display: 'flex', alignItems: 'center', gap: 8 }}
-                      >
-                        <i className="fa-solid fa-gear" style={{ color: '#dfba5c' }} /> Configuration & Réseaux
-                      </button>
+                      {userPerms.dashboard && (
+                        <button
+                          type="button"
+                          className="btn btn-outline"
+                          onClick={() => { setAdminTab('dashboard'); setActivePage('admin'); }}
+                          style={{ color: '#fff', borderColor: '#444', justifyContent: 'flex-start', padding: '12px 16px', display: 'flex', alignItems: 'center', gap: 8 }}
+                        >
+                          <i className="fa-solid fa-chart-line" style={{ color: '#dfba5c' }} /> Tableau de bord
+                        </button>
+                      )}
+                      {userPerms.products && (
+                        <button
+                          type="button"
+                          className="btn btn-outline"
+                          onClick={() => { setAdminTab('produits'); setActivePage('admin'); }}
+                          style={{ color: '#fff', borderColor: '#444', justifyContent: 'flex-start', padding: '12px 16px', display: 'flex', alignItems: 'center', gap: 8 }}
+                        >
+                          <i className="fa-solid fa-shirt" style={{ color: '#dfba5c' }} /> Gérer les Produits ({products.length})
+                        </button>
+                      )}
+                      {userPerms.orders && (
+                        <button
+                          type="button"
+                          className="btn btn-outline"
+                          onClick={() => { setAdminTab('commandes'); setActivePage('admin'); }}
+                          style={{ color: '#fff', borderColor: '#444', justifyContent: 'flex-start', padding: '12px 16px', display: 'flex', alignItems: 'center', gap: 8 }}
+                        >
+                          <i className="fa-solid fa-box" style={{ color: '#dfba5c' }} /> Commandes Clients ({orders.length})
+                        </button>
+                      )}
+                      {userPerms.messages && (
+                        <button
+                          type="button"
+                          className="btn btn-outline"
+                          onClick={() => { setAdminTab('messages'); setActivePage('admin'); }}
+                          style={{ color: '#fff', borderColor: '#444', justifyContent: 'flex-start', padding: '12px 16px', display: 'flex', alignItems: 'center', gap: 8 }}
+                        >
+                          <i className="fa-solid fa-headset" style={{ color: '#dfba5c' }} /> Messages & SAV ({messages.length})
+                        </button>
+                      )}
+                      {userPerms.config && (
+                        <button
+                          type="button"
+                          className="btn btn-outline"
+                          onClick={() => { setAdminTab('config'); setActivePage('admin'); }}
+                          style={{ color: '#fff', borderColor: '#444', justifyContent: 'flex-start', padding: '12px 16px', display: 'flex', alignItems: 'center', gap: 8 }}
+                        >
+                          <i className="fa-solid fa-gear" style={{ color: '#dfba5c' }} /> Configuration & Réseaux
+                        </button>
+                      )}
                     </div>
                   </div>
                 )}
@@ -2390,21 +2576,31 @@ export default function ByAfrikaPage() {
                 </div>
               </div>
               <nav className="admin-nav">
-                <a href="#" className={`admin-nav-link ${adminTab === 'dashboard' ? 'active' : ''}`} onClick={(e) => { e.preventDefault(); setAdminTab('dashboard'); }}>
-                  <i className="fa-solid fa-chart-line" /> Tableau de bord
-                </a>
-                <a href="#" className={`admin-nav-link ${adminTab === 'produits' ? 'active' : ''}`} onClick={(e) => { e.preventDefault(); setAdminTab('produits'); }}>
-                  <i className="fa-solid fa-shirt" /> Produits ({products.length})
-                </a>
-                <a href="#" className={`admin-nav-link ${adminTab === 'commandes' ? 'active' : ''}`} onClick={(e) => { e.preventDefault(); setAdminTab('commandes'); }}>
-                  <i className="fa-solid fa-box" /> Commandes ({orders.length})
-                </a>
-                <a href="#" className={`admin-nav-link ${adminTab === 'messages' ? 'active' : ''}`} onClick={(e) => { e.preventDefault(); setAdminTab('messages'); }}>
-                  <i className="fa-solid fa-headset" /> Messages & Réclamations ({messages.length})
-                </a>
-                <a href="#" className={`admin-nav-link ${adminTab === 'config' ? 'active' : ''}`} onClick={(e) => { e.preventDefault(); setAdminTab('config'); }}>
-                  <i className="fa-solid fa-gear" /> Configuration
-                </a>
+                {userPerms.dashboard && (
+                  <a href="#" className={`admin-nav-link ${adminTab === 'dashboard' ? 'active' : ''}`} onClick={(e) => { e.preventDefault(); setAdminTab('dashboard'); }}>
+                    <i className="fa-solid fa-chart-line" /> Tableau de bord
+                  </a>
+                )}
+                {userPerms.products && (
+                  <a href="#" className={`admin-nav-link ${adminTab === 'produits' ? 'active' : ''}`} onClick={(e) => { e.preventDefault(); setAdminTab('produits'); }}>
+                    <i className="fa-solid fa-shirt" /> Produits ({products.length})
+                  </a>
+                )}
+                {userPerms.orders && (
+                  <a href="#" className={`admin-nav-link ${adminTab === 'commandes' ? 'active' : ''}`} onClick={(e) => { e.preventDefault(); setAdminTab('commandes'); }}>
+                    <i className="fa-solid fa-box" /> Commandes ({orders.length})
+                  </a>
+                )}
+                {userPerms.messages && (
+                  <a href="#" className={`admin-nav-link ${adminTab === 'messages' ? 'active' : ''}`} onClick={(e) => { e.preventDefault(); setAdminTab('messages'); }}>
+                    <i className="fa-solid fa-headset" /> Messages & Réclamations ({messages.length})
+                  </a>
+                )}
+                {userPerms.config && (
+                  <a href="#" className={`admin-nav-link ${adminTab === 'config' ? 'active' : ''}`} onClick={(e) => { e.preventDefault(); setAdminTab('config'); }}>
+                    <i className="fa-solid fa-gear" /> Configuration
+                  </a>
+                )}
                 <a href="#" className="admin-nav-link" onClick={(e) => { e.preventDefault(); setActivePage('accueil'); }} style={{ color: 'var(--gold-accent)', marginTop: 24, border: '1px solid rgba(196,154,38,0.3)', borderRadius: 6 }}>
                   <i className="fa-solid fa-arrow-left" /> Retour à la Boutique
                 </a>
@@ -2420,7 +2616,7 @@ export default function ByAfrikaPage() {
               <div className="admin-mobile-topbar">
                 <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                   <span style={{ color: '#dfba5c', fontWeight: 800, fontSize: '0.85rem' }}>BY_AFRIKA</span>
-                  <span style={{ fontSize: '0.72rem', background: '#222', padding: '2px 6px', borderRadius: 4, color: '#aaa' }}>Admin</span>
+                  <span style={{ fontSize: '0.72rem', background: '#222', padding: '2px 6px', borderRadius: 4, color: '#aaa' }}>{user?.role || 'Admin'}</span>
                 </div>
                 <div style={{ display: 'flex', gap: 8 }}>
                   <button
@@ -2466,8 +2662,15 @@ export default function ByAfrikaPage() {
 
               <div className="admin-desktop-topbar">
                 <div className="admin-topbar-info">
-                  <span className="admin-topbar-badge"><i className="fa-solid fa-sliders" /> Panneau de Gestion</span>
-                  <span className="admin-topbar-user">Connecté : <strong>Adama Dioume (Fondateur)</strong></span>
+                  <span className="admin-topbar-badge"><i className="fa-solid fa-sliders" /> {user?.role || 'Panneau de Gestion'}</span>
+                  <span className="admin-topbar-user">
+                    Connecté : <strong>{user?.name || 'Adama Dioume (Fondateur)'}</strong>
+                    {user?.role && user.role !== 'admin' && user.role !== 'Fondateur' && !OFFICIAL_ADMIN_EMAILS.includes((user?.email || '').toLowerCase().trim()) && (
+                      <span style={{ marginLeft: 8, fontSize: '0.75rem', background: '#334155', padding: '2px 8px', borderRadius: 10, color: '#93c5fd' }}>
+                        Accès limité
+                      </span>
+                    )}
+                  </span>
                 </div>
                 <div className="admin-topbar-actions">
                   <button type="button" className="btn btn-outline" onClick={() => setActivePage('accueil')}>
@@ -2481,11 +2684,21 @@ export default function ByAfrikaPage() {
 
               {/* Navigation onglets mobile admin */}
               <nav className="admin-mobile-chips-nav">
-                <button type="button" className={`admin-chip-btn ${adminTab === 'dashboard' ? 'active' : ''}`} onClick={() => setAdminTab('dashboard')}><i className="fa-solid fa-chart-line" /> Dashboard</button>
-                <button type="button" className={`admin-chip-btn ${adminTab === 'produits' ? 'active' : ''}`} onClick={() => setAdminTab('produits')}><i className="fa-solid fa-shirt" /> Produits</button>
-                <button type="button" className={`admin-chip-btn ${adminTab === 'commandes' ? 'active' : ''}`} onClick={() => setAdminTab('commandes')}><i className="fa-solid fa-box" /> Commandes</button>
-                <button type="button" className={`admin-chip-btn ${adminTab === 'messages' ? 'active' : ''}`} onClick={() => setAdminTab('messages')}><i className="fa-solid fa-headset" /> Messages</button>
-                <button type="button" className={`admin-chip-btn ${adminTab === 'config' ? 'active' : ''}`} onClick={() => setAdminTab('config')}><i className="fa-solid fa-gear" /> Configuration</button>
+                {userPerms.dashboard && (
+                  <button type="button" className={`admin-chip-btn ${adminTab === 'dashboard' ? 'active' : ''}`} onClick={() => setAdminTab('dashboard')}><i className="fa-solid fa-chart-line" /> Dashboard</button>
+                )}
+                {userPerms.products && (
+                  <button type="button" className={`admin-chip-btn ${adminTab === 'produits' ? 'active' : ''}`} onClick={() => setAdminTab('produits')}><i className="fa-solid fa-shirt" /> Produits</button>
+                )}
+                {userPerms.orders && (
+                  <button type="button" className={`admin-chip-btn ${adminTab === 'commandes' ? 'active' : ''}`} onClick={() => setAdminTab('commandes')}><i className="fa-solid fa-box" /> Commandes</button>
+                )}
+                {userPerms.messages && (
+                  <button type="button" className={`admin-chip-btn ${adminTab === 'messages' ? 'active' : ''}`} onClick={() => setAdminTab('messages')}><i className="fa-solid fa-headset" /> Messages</button>
+                )}
+                {userPerms.config && (
+                  <button type="button" className={`admin-chip-btn ${adminTab === 'config' ? 'active' : ''}`} onClick={() => setAdminTab('config')}><i className="fa-solid fa-gear" /> Configuration</button>
+                )}
               </nav>
 
               {/* TAB : DASHBOARD */}
@@ -2851,9 +3064,11 @@ export default function ByAfrikaPage() {
                     <button type="button" className={`admin-subtab-btn ${adminSubTab === 'messages' ? 'active' : ''}`} onClick={() => setAdminSubTab('messages')}>
                       <i className="fa-solid fa-headset" /> Messages, Réclamations & Invalidations
                     </button>
-                    <button type="button" className={`admin-subtab-btn ${adminSubTab === 'roles' ? 'active' : ''}`} onClick={() => setAdminSubTab('roles')}>
-                      <i className="fa-solid fa-users-gear" /> Gestion des Rôles
-                    </button>
+                    {userPerms.roles && (
+                      <button type="button" className={`admin-subtab-btn ${adminSubTab === 'roles' ? 'active' : ''}`} onClick={() => setAdminSubTab('roles')}>
+                        <i className="fa-solid fa-users-gear" /> Gestion des Rôles & Accès
+                      </button>
+                    )}
                   </div>
 
                   {adminSubTab === 'messages' ? (
@@ -3007,9 +3222,14 @@ export default function ByAfrikaPage() {
                     </div>
                   ) : (
                     <div>
-                      <div className="admin-section-header">
-                        <h2>Membres de l'équipe et Rôles</h2>
-                        <button type="button" className="btn btn-primary" onClick={() => setShowAddUserModal(true)}>
+                      <div className="admin-section-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 12, marginBottom: 20 }}>
+                        <div>
+                          <h2 style={{ margin: 0 }}>Membres de l'équipe et Rôles</h2>
+                          <p style={{ color: 'var(--text-secondary)', fontSize: '0.85rem', margin: '4px 0 0' }}>
+                            Définissez et limitez les accès autorisés pour chaque collaborateur.
+                          </p>
+                        </div>
+                        <button type="button" className="btn btn-primary" onClick={openAddRoleModal}>
                           <i className="fa-solid fa-user-plus" /> Ajouter un Rôle
                         </button>
                       </div>
@@ -3020,12 +3240,14 @@ export default function ByAfrikaPage() {
                               <th>Nom</th>
                               <th>Email</th>
                               <th>Rôle Actuel</th>
-                              <th style={{ textAlign: 'right' }}>Action</th>
+                              <th>Accès Autorisés (Limités par l'Admin)</th>
+                              <th style={{ textAlign: 'right' }}>Actions</th>
                             </tr>
                           </thead>
                           <tbody>
                             {usersList.map(u => {
                               const isFounder = OFFICIAL_ADMIN_EMAILS.includes((u.email || '').toLowerCase().trim());
+                              const perms = u.permissions || getEffectivePermissions(u);
                               return (
                                 <tr key={u.id}>
                                   <td data-label="Nom"><strong>{u.name}</strong></td>
@@ -3035,21 +3257,48 @@ export default function ByAfrikaPage() {
                                       {u.role}
                                     </span>
                                   </td>
-                                  <td data-label="Action" style={{ textAlign: 'right' }}>
+                                  <td data-label="Accès Autorisés">
+                                    {isFounder ? (
+                                      <span style={{ fontSize: '0.8rem', color: '#dfba5c', fontWeight: 700 }}>
+                                        <i className="fa-solid fa-lock-open" style={{ marginRight: 4 }} /> Accès Total Illimité
+                                      </span>
+                                    ) : (
+                                      <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
+                                        {perms.dashboard && <span style={{ fontSize: '0.72rem', background: 'rgba(59, 130, 246, 0.1)', color: '#2563eb', padding: '2px 6px', borderRadius: 4, fontWeight: 600 }}>Stats</span>}
+                                        {perms.products && <span style={{ fontSize: '0.72rem', background: 'rgba(245, 158, 11, 0.1)', color: '#d97706', padding: '2px 6px', borderRadius: 4, fontWeight: 600 }}>Catalogue</span>}
+                                        {perms.orders && <span style={{ fontSize: '0.72rem', background: 'rgba(16, 185, 129, 0.1)', color: '#059669', padding: '2px 6px', borderRadius: 4, fontWeight: 600 }}>Commandes</span>}
+                                        {perms.messages && <span style={{ fontSize: '0.72rem', background: 'rgba(139, 92, 246, 0.1)', color: '#7c3aed', padding: '2px 6px', borderRadius: 4, fontWeight: 600 }}>SAV</span>}
+                                        {perms.config && <span style={{ fontSize: '0.72rem', background: 'rgba(100, 116, 139, 0.1)', color: '#475569', padding: '2px 6px', borderRadius: 4, fontWeight: 600 }}>Config</span>}
+                                        {perms.roles && <span style={{ fontSize: '0.72rem', background: 'rgba(239, 68, 68, 0.1)', color: '#dc2626', padding: '2px 6px', borderRadius: 4, fontWeight: 600 }}>Rôles</span>}
+                                      </div>
+                                    )}
+                                  </td>
+                                  <td data-label="Actions" style={{ textAlign: 'right' }}>
                                     {isFounder ? (
                                       <span style={{ fontSize: '0.8rem', color: '#dfba5c', fontWeight: 600 }}>
                                         <i className="fa-solid fa-crown" style={{ marginRight: 4 }} /> Propriétaire
                                       </span>
                                     ) : (
-                                      <button
-                                        type="button"
-                                        className="btn btn-sm btn-outline"
-                                        style={{ color: '#ef4444', borderColor: 'rgba(239, 68, 68, 0.4)', padding: '4px 10px', fontSize: '0.8rem' }}
-                                        onClick={() => handleDeleteUser(u.id, u.email)}
-                                        title="Supprimer ce membre / rôle"
-                                      >
-                                        <i className="fa-solid fa-trash-can" style={{ marginRight: 4 }} /> Retirer
-                                      </button>
+                                      <div style={{ display: 'inline-flex', gap: 6 }}>
+                                        <button
+                                          type="button"
+                                          className="btn btn-sm btn-outline"
+                                          style={{ color: '#0284c7', borderColor: 'rgba(2, 132, 199, 0.4)', padding: '4px 10px', fontSize: '0.8rem' }}
+                                          onClick={() => openEditRoleModal(u)}
+                                          title="Modifier les accès et permissions"
+                                        >
+                                          <i className="fa-solid fa-sliders" style={{ marginRight: 4 }} /> Modifier accès
+                                        </button>
+                                        <button
+                                          type="button"
+                                          className="btn btn-sm btn-outline"
+                                          style={{ color: '#ef4444', borderColor: 'rgba(239, 68, 68, 0.4)', padding: '4px 10px', fontSize: '0.8rem' }}
+                                          onClick={() => handleDeleteUser(u.id, u.email)}
+                                          title="Supprimer ce membre / rôle"
+                                        >
+                                          <i className="fa-solid fa-trash-can" style={{ marginRight: 4 }} /> Retirer
+                                        </button>
+                                      </div>
                                     )}
                                   </td>
                                 </tr>
@@ -4384,42 +4633,67 @@ export default function ByAfrikaPage() {
         </div>
       )}
 
-      {/* 7b. Modal Admin Ajout Rôle / Utilisateur */}
+      {/* 7b. Modal Admin Ajout & Modification Rôle / Utilisateur */}
       {showAddUserModal && (
-        <div id="modal-admin-user" className="modal modal-admin-dialog" style={{ display: 'block', maxWidth: 520 }}>
+        <div id="modal-admin-user" className="modal modal-admin-dialog" style={{ display: 'block', maxWidth: 540 }}>
           <div className="modal-content" style={{ padding: 24 }}>
             <button
               type="button"
               className="auth-modal-close-btn modal-close"
               onClick={() => {
                 setShowAddUserModal(false);
+                setEditingUser(null);
                 setAddUserPassword('');
                 setAddUserConfirmPassword('');
               }}
             >
               <i className="fa-solid fa-xmark" />
             </button>
-            <div style={{ marginBottom: 20 }}>
+            <div style={{ marginBottom: 18 }}>
               <h2 style={{ fontSize: '1.3rem', fontWeight: 800, margin: '0 0 4px 0', display: 'flex', alignItems: 'center', gap: 8 }}>
-                <i className="fa-solid fa-user-plus" style={{ color: '#c49a26' }} />
-                Attribuer un Rôle & Créer un Accès
+                <i className={`fa-solid ${editingUser ? 'fa-user-pen' : 'fa-user-plus'}`} style={{ color: '#c49a26' }} />
+                {editingUser ? `Modifier les Accès : ${editingUser.name}` : 'Attribuer un Rôle & Définir les Accès'}
               </h2>
               <p style={{ fontSize: '0.85rem', color: '#666', margin: 0 }}>
-                Ajoutez un collaborateur avec ses identifiants de connexion (e-mail et mot de passe) pour lui permettre de se connecter directement au site.
+                {editingUser
+                  ? 'Ajustez les rubriques et modules auxquels ce collaborateur a le droit d\'accéder.'
+                  : 'Ajoutez un collaborateur avec ses identifiants de connexion et définissez ses accès limités.'}
               </p>
             </div>
             <form className="form-stack" onSubmit={handleAddUserSubmit}>
               <div className="form-group">
                 <label className="form-label">Nom complet du collaborateur *</label>
-                <input type="text" name="userName" className="form-input" placeholder="Ex: Moussa Ndiaye" required autoFocus />
+                <input
+                  type="text"
+                  name="userName"
+                  className="form-input"
+                  placeholder="Ex: Moussa Ndiaye"
+                  defaultValue={editingUser?.name || ''}
+                  required
+                  autoFocus
+                />
               </div>
               <div className="form-group">
                 <label className="form-label">Adresse e-mail professionnelle *</label>
-                <input type="email" name="userEmail" className="form-input" placeholder="moussa@byafrika.com" required />
+                <input
+                  type="email"
+                  name="userEmail"
+                  className="form-input"
+                  placeholder="moussa@byafrika.com"
+                  defaultValue={editingUser?.email || ''}
+                  required
+                  readOnly={Boolean(editingUser)}
+                  style={editingUser ? { background: '#f1f5f9', cursor: 'not-allowed' } : {}}
+                />
               </div>
               <div className="form-group">
                 <label className="form-label">Rôle attribué *</label>
-                <select name="userRole" className="form-input" defaultValue="Gestionnaire de commandes">
+                <select
+                  name="userRole"
+                  className="form-input"
+                  defaultValue={editingUser?.role || 'Gestionnaire de commandes'}
+                  onChange={(e) => handleRolePresetChange(e.target.value)}
+                >
                   <option value="Administrateur">Administrateur (Accès complet)</option>
                   <option value="Gestionnaire de stock">Gestionnaire de stock (Catalogue & Inventaire)</option>
                   <option value="Gestionnaire de commandes">Gestionnaire de commandes (Expéditions & Statuts)</option>
@@ -4427,11 +4701,83 @@ export default function ByAfrikaPage() {
                 </select>
               </div>
 
-              {/* Nouveau : Mot de passe et confirmation */}
-              <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 10, padding: 14, margin: '14px 0' }}>
+              {/* SECTION : PERMISSIONS & ACCÈS LIMITÉS PAR L'ADMINISTRATEUR */}
+              <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 10, padding: 14, margin: '12px 0' }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+                  <label style={{ margin: 0, fontWeight: 700, fontSize: '0.85rem', color: '#1e293b', display: 'flex', alignItems: 'center', gap: 6 }}>
+                    <i className="fa-solid fa-shield-halved" style={{ color: '#c49a26' }} />
+                    Accès limités par l'Admin (Cochez pour autoriser) :
+                  </label>
+                  <span style={{ fontSize: '0.72rem', background: '#e0f2fe', color: '#0369a1', padding: '2px 8px', borderRadius: 10, fontWeight: 700 }}>
+                    Contrôle RBAC
+                  </span>
+                </div>
+                <p style={{ fontSize: '0.75rem', color: '#64748b', margin: '0 0 10px 0' }}>
+                  Ce collaborateur verra UNIQUEMENT les rubriques cochées ci-dessous :
+                </p>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(210px, 1fr))', gap: 8 }}>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: '0.82rem', color: '#334155', cursor: 'pointer', background: '#fff', padding: '8px 10px', borderRadius: 6, border: '1px solid #e2e8f0' }}>
+                    <input
+                      type="checkbox"
+                      checked={rolePermissions.dashboard}
+                      onChange={(e) => setRolePermissions({ ...rolePermissions, dashboard: e.target.checked })}
+                    />
+                    <span><i className="fa-solid fa-chart-line" style={{ marginRight: 4, color: '#3b82f6' }} /> Dashboard & Chiffres</span>
+                  </label>
+
+                  <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: '0.82rem', color: '#334155', cursor: 'pointer', background: '#fff', padding: '8px 10px', borderRadius: 6, border: '1px solid #e2e8f0' }}>
+                    <input
+                      type="checkbox"
+                      checked={rolePermissions.products}
+                      onChange={(e) => setRolePermissions({ ...rolePermissions, products: e.target.checked })}
+                    />
+                    <span><i className="fa-solid fa-shirt" style={{ marginRight: 4, color: '#f59e0b' }} /> Catalogue & Stocks</span>
+                  </label>
+
+                  <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: '0.82rem', color: '#334155', cursor: 'pointer', background: '#fff', padding: '8px 10px', borderRadius: 6, border: '1px solid #e2e8f0' }}>
+                    <input
+                      type="checkbox"
+                      checked={rolePermissions.orders}
+                      onChange={(e) => setRolePermissions({ ...rolePermissions, orders: e.target.checked })}
+                    />
+                    <span><i className="fa-solid fa-box" style={{ marginRight: 4, color: '#10b981' }} /> Commandes Clients</span>
+                  </label>
+
+                  <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: '0.82rem', color: '#334155', cursor: 'pointer', background: '#fff', padding: '8px 10px', borderRadius: 6, border: '1px solid #e2e8f0' }}>
+                    <input
+                      type="checkbox"
+                      checked={rolePermissions.messages}
+                      onChange={(e) => setRolePermissions({ ...rolePermissions, messages: e.target.checked })}
+                    />
+                    <span><i className="fa-solid fa-headset" style={{ marginRight: 4, color: '#8b5cf6' }} /> SAV & Invalidations</span>
+                  </label>
+
+                  <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: '0.82rem', color: '#334155', cursor: 'pointer', background: '#fff', padding: '8px 10px', borderRadius: 6, border: '1px solid #e2e8f0' }}>
+                    <input
+                      type="checkbox"
+                      checked={rolePermissions.config}
+                      onChange={(e) => setRolePermissions({ ...rolePermissions, config: e.target.checked })}
+                    />
+                    <span><i className="fa-solid fa-gear" style={{ marginRight: 4, color: '#64748b' }} /> Configuration Site</span>
+                  </label>
+
+                  <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: '0.82rem', color: '#334155', cursor: 'pointer', background: '#fff', padding: '8px 10px', borderRadius: 6, border: '1px solid #e2e8f0' }}>
+                    <input
+                      type="checkbox"
+                      checked={rolePermissions.roles}
+                      onChange={(e) => setRolePermissions({ ...rolePermissions, roles: e.target.checked })}
+                    />
+                    <span><i className="fa-solid fa-users-gear" style={{ marginRight: 4, color: '#dc2626' }} /> Gestion des Rôles</span>
+                  </label>
+                </div>
+              </div>
+
+              {/* Bloc Mot de passe et confirmation */}
+              <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 10, padding: 14, margin: '12px 0' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
                   <label className="form-label" style={{ margin: 0, fontWeight: 700, fontSize: '0.85rem', color: '#1e293b' }}>
-                    <i className="fa-solid fa-key" style={{ marginRight: 6, color: '#c49a26' }} /> Mot de passe de connexion *
+                    <i className="fa-solid fa-key" style={{ marginRight: 6, color: '#c49a26' }} />
+                    {editingUser ? 'Changer le mot de passe (Optionnel)' : 'Mot de passe de connexion *'}
                   </label>
                   <button
                     type="button"
@@ -4450,9 +4796,9 @@ export default function ByAfrikaPage() {
                     value={addUserPassword}
                     onChange={(e) => setAddUserPassword(e.target.value)}
                     className="form-input"
-                    placeholder="Au moins 6 caractères"
-                    minLength={6}
-                    required
+                    placeholder={editingUser ? "Laisser vide pour conserver le mot de passe actuel" : "Au moins 6 caractères"}
+                    minLength={editingUser ? 0 : 6}
+                    required={!editingUser}
                     style={{ paddingRight: 40 }}
                   />
                   <button
@@ -4465,19 +4811,21 @@ export default function ByAfrikaPage() {
                   </button>
                 </div>
 
-                <div className="form-group" style={{ marginBottom: 4 }}>
-                  <label className="form-label" style={{ fontSize: '0.8rem', color: '#64748b', marginBottom: 4 }}>Confirmer le mot de passe *</label>
-                  <input
-                    type={showAddUserPassword ? 'text' : 'password'}
-                    name="userConfirmPassword"
-                    value={addUserConfirmPassword}
-                    onChange={(e) => setAddUserConfirmPassword(e.target.value)}
-                    className="form-input"
-                    placeholder="Répétez le mot de passe"
-                    minLength={6}
-                    required
-                  />
-                </div>
+                {(!editingUser || addUserPassword.length > 0) && (
+                  <div className="form-group" style={{ marginBottom: 4 }}>
+                    <label className="form-label" style={{ fontSize: '0.8rem', color: '#64748b', marginBottom: 4 }}>Confirmer le mot de passe *</label>
+                    <input
+                      type={showAddUserPassword ? 'text' : 'password'}
+                      name="userConfirmPassword"
+                      value={addUserConfirmPassword}
+                      onChange={(e) => setAddUserConfirmPassword(e.target.value)}
+                      className="form-input"
+                      placeholder="Répétez le mot de passe"
+                      minLength={6}
+                      required={!editingUser || addUserPassword.length > 0}
+                    />
+                  </div>
+                )}
                 <p style={{ margin: '8px 0 0 0', fontSize: '0.75rem', color: '#64748b' }}>
                   <i className="fa-solid fa-circle-info" style={{ marginRight: 4 }} />
                   Ce mot de passe permettra à ce rôle de se connecter au site via l'Espace Administrateur ou la page de connexion.
@@ -4491,6 +4839,7 @@ export default function ByAfrikaPage() {
                   style={{ flex: 1 }}
                   onClick={() => {
                     setShowAddUserModal(false);
+                    setEditingUser(null);
                     setAddUserPassword('');
                     setAddUserConfirmPassword('');
                   }}
@@ -4500,9 +4849,12 @@ export default function ByAfrikaPage() {
                 </button>
                 <button type="submit" className="btn btn-primary" style={{ flex: 2 }} disabled={addUserLoading}>
                   {addUserLoading ? (
-                    <span><i className="fa-solid fa-spinner fa-spin" style={{ marginRight: 6 }} /> Création en cours...</span>
+                    <span><i className="fa-solid fa-spinner fa-spin" style={{ marginRight: 6 }} /> Enregistrement...</span>
                   ) : (
-                    <span><i className="fa-solid fa-user-check" style={{ marginRight: 6 }} /> Créer l'accès & le rôle</span>
+                    <span>
+                      <i className={`fa-solid ${editingUser ? 'fa-check' : 'fa-user-check'}`} style={{ marginRight: 6 }} />
+                      {editingUser ? 'Enregistrer les modifications' : 'Créer l\'accès & le rôle'}
+                    </span>
                   )}
                 </button>
               </div>
