@@ -116,6 +116,14 @@ export default function ByAfrikaPage() {
       const savedConfig = localStorage.getItem('byafrika_config');
       if (savedConfig) setConfig(JSON.parse(savedConfig));
 
+      const savedMessages = localStorage.getItem('byafrika_messages');
+      if (savedMessages) {
+        try {
+          const parsedMsgs = JSON.parse(savedMessages);
+          if (Array.isArray(parsedMsgs)) setMessages(parsedMsgs);
+        } catch (e) { }
+      }
+
       const savedConsent = localStorage.getItem('byafrika_cookie_consent');
       if (savedConsent) setCookieConsent(true);
     } catch (e) {
@@ -140,7 +148,10 @@ export default function ByAfrikaPage() {
         if (dbUsers && dbUsers.length > 0) setUsersList(dbUsers);
 
         const { data: dbMsgs } = await supabase.from('messages').select('*').order('created_at', { ascending: false });
-        if (dbMsgs && dbMsgs.length > 0) setMessages(dbMsgs);
+        if (dbMsgs && dbMsgs.length > 0) {
+          setMessages(dbMsgs);
+          try { localStorage.setItem('byafrika_messages', JSON.stringify(dbMsgs)); } catch (e) { }
+        }
 
         // Synchronisation de la configuration générale : lire d'abord site_config officiel
         let configLoaded = false;
@@ -259,6 +270,12 @@ export default function ByAfrikaPage() {
       localStorage.setItem('byafrika_users', JSON.stringify(usersList));
     } catch (e) { }
   }, [usersList]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('byafrika_messages', JSON.stringify(messages));
+    } catch (e) { }
+  }, [messages]);
 
   // Sauvegarde automatique temps réel de la configuration dans localStorage
   useEffect(() => {
@@ -1013,6 +1030,76 @@ export default function ByAfrikaPage() {
       await supabase.from('orders').delete().neq('id', 'keep_none_placeholder');
     } catch (err) { }
     showToast('Tout l\'historique des commandes a été supprimé.');
+  };
+
+  // Supprimer l'historique des commandes invalidées ou annulées
+  const handleDeleteCanceledOrders = async () => {
+    const canceled = orders.filter(o => o.status === 'Annulée' || o.status === 'Invalidée' || o.status === 'Invalidation Réglée');
+    if (canceled.length === 0) {
+      showToast('Aucune commande invalidée ou annulée à supprimer.');
+      return;
+    }
+    if (!confirm(`Voulez-vous supprimer l'historique des ${canceled.length} commande(s) invalidée(s) ou annulée(s) ?`)) return;
+    const remaining = orders.filter(o => !(o.status === 'Annulée' || o.status === 'Invalidée' || o.status === 'Invalidation Réglée'));
+    setOrders(remaining);
+    try { localStorage.setItem('byafrika_orders', JSON.stringify(remaining)); } catch (e) { }
+    try {
+      for (const o of canceled) {
+        await supabase.from('orders').delete().eq('id', o.id);
+      }
+    } catch (e) { }
+    showToast(`Historique des ${canceled.length} commandes invalidées supprimé avec succès.`);
+  };
+
+  // ── GESTION DES RÉCLAMATIONS ET INVALIDATIONS ──
+  // 1. Bouton permettant de déclarer que l'invalidation a été réglée
+  const handleToggleResolveMessage = async (msgId) => {
+    const target = messages.find(m => m.id === msgId);
+    if (!target) return;
+    const newStatus = (target.status === 'Réglée' || target.status === 'Réglé') ? 'En attente' : 'Réglée';
+
+    const updated = messages.map(m => m.id === msgId ? { ...m, status: newStatus } : m);
+    setMessages(updated);
+    try { localStorage.setItem('byafrika_messages', JSON.stringify(updated)); } catch (e) { }
+    try {
+      await supabase.from('messages').update({ status: newStatus }).eq('id', msgId);
+    } catch (e) { }
+
+    showToast(newStatus === 'Réglée' ? 'L\'invalidation / réclamation a été marquée comme RÉGLÉE avec succès !' : 'L\'invalidation a été remise en attente.');
+  };
+
+  // 2. Bouton pour supprimer une réclamation / invalidation individuelle
+  const handleDeleteSingleMessage = async (msgId) => {
+    if (!confirm('Voulez-vous vraiment supprimer cette réclamation / invalidation de l\'historique ?')) return;
+    const updated = messages.filter(m => m.id !== msgId);
+    setMessages(updated);
+    try { localStorage.setItem('byafrika_messages', JSON.stringify(updated)); } catch (e) { }
+    try {
+      await supabase.from('messages').delete().eq('id', msgId);
+    } catch (e) { }
+    showToast('Réclamation / invalidation supprimée.');
+  };
+
+  // 3. Bouton pour supprimer TOUT l'historique des invalidations et réclamations
+  const handleClearMessagesHistory = async () => {
+    const nonSystem = messages.filter(m => m.id !== 'system_byafrika_config' && m.subject !== 'SYSTEM_CONFIG');
+    if (nonSystem.length === 0) {
+      showToast('Aucun historique d\'invalidation ou de réclamation à supprimer.');
+      return;
+    }
+    if (!confirm(`Voulez-vous vraiment supprimer l'historique complet des ${nonSystem.length} réclamation(s) et invalidation(s) ?`)) {
+      return;
+    }
+
+    const systemOnly = messages.filter(m => m.id === 'system_byafrika_config' || m.subject === 'SYSTEM_CONFIG');
+    setMessages(systemOnly);
+    try { localStorage.setItem('byafrika_messages', JSON.stringify(systemOnly)); } catch (e) { }
+    try {
+      for (const m of nonSystem) {
+        await supabase.from('messages').delete().eq('id', m.id);
+      }
+    } catch (e) { }
+    showToast('Tout l\'historique des invalidations et réclamations a été supprimé.');
   };
 
   // ── AJOUT DE RÔLE UTILISATEUR (ADMIN) ──
@@ -2435,27 +2522,50 @@ export default function ByAfrikaPage() {
                 <div className="admin-section active">
                   <div className="admin-section-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 12, marginBottom: 20 }}>
                     <h2>Gestion des Commandes Clients ({orders.length})</h2>
-                    {orders.length > 0 && (
-                      <button
-                        type="button"
-                        className="btn btn-outline"
-                        onClick={handleClearAllOrdersAdmin}
-                        style={{
-                          color: '#ef4444',
-                          borderColor: '#ef4444',
-                          background: 'rgba(239, 68, 68, 0.05)',
-                          fontSize: '0.85rem',
-                          fontWeight: 700,
-                          padding: '8px 16px',
-                          borderRadius: 8,
-                          display: 'inline-flex',
-                          alignItems: 'center',
-                          gap: 6
-                        }}
-                      >
-                        <i className="fa-solid fa-trash-can" /> Supprimer tout l'historique
-                      </button>
-                    )}
+                    <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+                      {orders.some(o => o.status === 'Annulée' || o.status === 'Invalidée' || o.status === 'Invalidation Réglée') && (
+                        <button
+                          type="button"
+                          className="btn btn-outline"
+                          onClick={handleDeleteCanceledOrders}
+                          style={{
+                            color: '#ef4444',
+                            borderColor: 'rgba(239, 68, 68, 0.4)',
+                            background: 'rgba(239, 68, 68, 0.08)',
+                            fontSize: '0.82rem',
+                            fontWeight: 700,
+                            padding: '7px 14px',
+                            borderRadius: 8,
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: 6
+                          }}
+                        >
+                          <i className="fa-solid fa-ban" /> Supprimer les invalidations
+                        </button>
+                      )}
+                      {orders.length > 0 && (
+                        <button
+                          type="button"
+                          className="btn btn-outline"
+                          onClick={handleClearAllOrdersAdmin}
+                          style={{
+                            color: '#ef4444',
+                            borderColor: '#ef4444',
+                            background: 'rgba(239, 68, 68, 0.05)',
+                            fontSize: '0.82rem',
+                            fontWeight: 700,
+                            padding: '7px 14px',
+                            borderRadius: 8,
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: 6
+                          }}
+                        >
+                          <i className="fa-solid fa-trash-can" /> Supprimer tout l'historique
+                        </button>
+                      )}
+                    </div>
                   </div>
                   <div className="admin-table-wrapper">
                     <table className="admin-table">
@@ -2508,9 +2618,26 @@ export default function ByAfrikaPage() {
                                   <option value="En livraison">En livraison</option>
                                   <option value="Livrée">Livrée</option>
                                   <option value="Annulée">Annulée</option>
+                                  <option value="Invalidée">Invalidée</option>
+                                  <option value="Invalidation Réglée">Invalidation Réglée</option>
                                 </select>
                               </td>
                               <td data-label="Actions">
+                                {(o.status === 'Annulée' || o.status === 'Invalidée') && (
+                                  <button
+                                    type="button"
+                                    className="btn btn-sm btn-outline"
+                                    style={{ color: '#22c55e', borderColor: '#22c55e', marginRight: 6 }}
+                                    onClick={async () => {
+                                      setOrders(prev => prev.map(item => item.id === o.id ? { ...item, status: 'Invalidation Réglée' } : item));
+                                      try { await supabase.from('orders').update({ status: 'Invalidation Réglée' }).eq('id', o.id); } catch (e) { }
+                                      showToast(`Invalidation de la commande ${o.id} marquée comme réglée !`);
+                                    }}
+                                    title="Déclarer l'invalidation de cette commande comme réglée"
+                                  >
+                                    <i className="fa-solid fa-check" /> Invalidation réglée
+                                  </button>
+                                )}
                                 <button
                                   type="button"
                                   className="btn btn-sm btn-outline"
@@ -2535,7 +2662,7 @@ export default function ByAfrikaPage() {
                 <div className="admin-section active">
                   <div className="admin-subtabs-bar">
                     <button type="button" className={`admin-subtab-btn ${adminSubTab === 'messages' ? 'active' : ''}`} onClick={() => setAdminSubTab('messages')}>
-                      <i className="fa-solid fa-headset" /> Messages & Réclamations
+                      <i className="fa-solid fa-headset" /> Messages, Réclamations & Invalidations
                     </button>
                     <button type="button" className={`admin-subtab-btn ${adminSubTab === 'roles' ? 'active' : ''}`} onClick={() => setAdminSubTab('roles')}>
                       <i className="fa-solid fa-users-gear" /> Gestion des Rôles
@@ -2543,48 +2670,153 @@ export default function ByAfrikaPage() {
                   </div>
 
                   {adminSubTab === 'messages' ? (
-                    <div className="admin-table-wrapper">
-                      <table className="admin-table">
-                        <thead>
-                          <tr>
-                            <th>Date</th>
-                            <th>Client</th>
-                            <th>Motif</th>
-                            <th>Message</th>
-                            <th>Réponse WhatsApp</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {messages.filter(m => m.id !== 'system_byafrika_config' && m.subject !== 'SYSTEM_CONFIG').length === 0 ? (
-                            <tr><td colSpan={5} style={{ textAlign: 'center', padding: 30 }}>Aucune réclamation.</td></tr>
-                          ) : (
-                            messages.filter(m => m.id !== 'system_byafrika_config' && m.subject !== 'SYSTEM_CONFIG').map(m => (
-                              <tr key={m.id}>
-                                <td data-label="Date">{new Date(m.createdAt).toLocaleDateString('fr-FR')}</td>
-                                <td data-label="Client">
-                                  <strong>{m.name}</strong>
-                                  <div style={{ fontSize: '0.8rem', color: '#666' }}>{m.phone}</div>
-                                </td>
-                                <td data-label="Motif"><span className="badge-type">{m.type}</span></td>
-                                <td data-label="Message" style={{ maxWidth: 300 }}>{m.message}</td>
-                                <td data-label="Réponse">
-                                  {m.phone && (
-                                    <a
-                                      href={`https://wa.me/${m.phone.replace(/[^0-9]/g, '')}`}
-                                      target="_blank"
-                                      rel="noreferrer"
-                                      className="btn btn-sm btn-outline"
-                                      style={{ color: '#25D366', borderColor: '#25D366', display: 'inline-flex', alignItems: 'center', gap: 6 }}
-                                    >
-                                      <i className="fa-brands fa-whatsapp" /> Répondre sur WhatsApp
-                                    </a>
-                                  )}
+                    <div>
+                      <div className="admin-section-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 12, marginBottom: 20 }}>
+                        <div>
+                          <h2 style={{ margin: 0 }}>Réclamations & Invalidations Clients ({messages.filter(m => m.id !== 'system_byafrika_config' && m.subject !== 'SYSTEM_CONFIG').length})</h2>
+                          <p style={{ color: 'var(--text-secondary)', fontSize: '0.88rem', margin: '4px 0 0' }}>
+                            {messages.filter(m => m.id !== 'system_byafrika_config' && m.subject !== 'SYSTEM_CONFIG' && (m.status === 'Réglée' || m.status === 'Réglé')).length} réglée(s) • {messages.filter(m => m.id !== 'system_byafrika_config' && m.subject !== 'SYSTEM_CONFIG' && m.status !== 'Réglée' && m.status !== 'Réglé').length} en attente
+                          </p>
+                        </div>
+                        {messages.filter(m => m.id !== 'system_byafrika_config' && m.subject !== 'SYSTEM_CONFIG').length > 0 && (
+                          <button
+                            type="button"
+                            className="btn btn-outline"
+                            onClick={handleClearMessagesHistory}
+                            style={{
+                              color: '#ef4444',
+                              borderColor: '#ef4444',
+                              background: 'rgba(239, 68, 68, 0.08)',
+                              fontSize: '0.85rem',
+                              fontWeight: 700,
+                              padding: '8px 16px',
+                              borderRadius: 8,
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: 6
+                            }}
+                          >
+                            <i className="fa-solid fa-trash-can" /> Supprimer l'historique des invalidations
+                          </button>
+                        )}
+                      </div>
+
+                      <div className="admin-table-wrapper">
+                        <table className="admin-table">
+                          <thead>
+                            <tr>
+                              <th>Date</th>
+                              <th>Client</th>
+                              <th>Motif</th>
+                              <th>Message / Détails</th>
+                              <th>Statut</th>
+                              <th>Actions</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {messages.filter(m => m.id !== 'system_byafrika_config' && m.subject !== 'SYSTEM_CONFIG').length === 0 ? (
+                              <tr>
+                                <td colSpan={6} style={{ textAlign: 'center', padding: 36, color: 'var(--text-secondary)' }}>
+                                  <i className="fa-solid fa-circle-check" style={{ fontSize: '2rem', color: '#22c55e', display: 'block', marginBottom: 10 }} />
+                                  Aucune réclamation ou invalidation enregistrée. Tout est en ordre !
                                 </td>
                               </tr>
-                            ))
-                          )}
-                        </tbody>
-                      </table>
+                            ) : (
+                              messages.filter(m => m.id !== 'system_byafrika_config' && m.subject !== 'SYSTEM_CONFIG').map(m => {
+                                const isResolved = m.status === 'Réglée' || m.status === 'Réglé';
+                                return (
+                                  <tr key={m.id} style={isResolved ? { opacity: 0.85, background: 'rgba(34, 197, 94, 0.03)' } : {}}>
+                                    <td data-label="Date">{new Date(m.createdAt || m.created_at || Date.now()).toLocaleDateString('fr-FR')}</td>
+                                    <td data-label="Client">
+                                      <strong>{m.name}</strong>
+                                      {m.orderId && <div style={{ fontSize: '0.78rem', color: '#dfba5c' }}>Cmd: {m.orderId}</div>}
+                                      {m.email && <div style={{ fontSize: '0.78rem', color: '#888' }}>{m.email}</div>}
+                                      <div style={{ fontSize: '0.8rem', color: '#aaa' }}>{m.phone}</div>
+                                    </td>
+                                    <td data-label="Motif">
+                                      <span className="badge-type">{m.type || 'Réclamation'}</span>
+                                    </td>
+                                    <td data-label="Message" style={{ maxWidth: 280, wordBreak: 'break-word' }}>
+                                      {m.message}
+                                    </td>
+                                    <td data-label="Statut">
+                                      {isResolved ? (
+                                        <span
+                                          className="badge-type"
+                                          style={{
+                                            background: 'rgba(34, 197, 94, 0.15)',
+                                            color: '#22c55e',
+                                            borderColor: 'rgba(34, 197, 94, 0.4)',
+                                            display: 'inline-flex',
+                                            alignItems: 'center',
+                                            gap: 4
+                                          }}
+                                        >
+                                          <i className="fa-solid fa-circle-check" /> Réglée
+                                        </span>
+                                      ) : (
+                                        <span
+                                          className="badge-type"
+                                          style={{
+                                            background: 'rgba(234, 179, 8, 0.15)',
+                                            color: '#eab308',
+                                            borderColor: 'rgba(234, 179, 8, 0.4)',
+                                            display: 'inline-flex',
+                                            alignItems: 'center',
+                                            gap: 4
+                                          }}
+                                        >
+                                          <i className="fa-solid fa-clock" /> En attente
+                                        </span>
+                                      )}
+                                    </td>
+                                    <td data-label="Actions">
+                                      <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
+                                        {/* Bouton pour déclarer que l'invalidation est réglée */}
+                                        <button
+                                          type="button"
+                                          className={`btn btn-sm ${isResolved ? 'btn-outline' : 'btn-primary'}`}
+                                          style={isResolved ? { borderColor: '#22c55e', color: '#22c55e', background: 'rgba(34, 197, 94, 0.08)' } : {}}
+                                          onClick={() => handleToggleResolveMessage(m.id)}
+                                          title={isResolved ? "Cliquer pour réouvrir cette invalidation" : "Cliquer pour déclarer cette invalidation réglée"}
+                                        >
+                                          <i className={`fa-solid ${isResolved ? 'fa-circle-check' : 'fa-check'}`} />
+                                          {isResolved ? ' Invalidation réglée' : ' Marquer réglée'}
+                                        </button>
+
+                                        {/* Contact direct WhatsApp */}
+                                        {m.phone && (
+                                          <a
+                                            href={`https://wa.me/${m.phone.replace(/[^0-9]/g, '')}`}
+                                            target="_blank"
+                                            rel="noreferrer"
+                                            className="btn btn-sm btn-outline"
+                                            style={{ color: '#25D366', borderColor: '#25D366', display: 'inline-flex', alignItems: 'center', gap: 4 }}
+                                            title="Répondre au client sur WhatsApp"
+                                          >
+                                            <i className="fa-brands fa-whatsapp" />
+                                          </a>
+                                        )}
+
+                                        {/* Bouton supprimer individuel */}
+                                        <button
+                                          type="button"
+                                          className="btn btn-sm btn-outline"
+                                          style={{ color: '#ef4444', borderColor: 'rgba(239, 68, 68, 0.4)' }}
+                                          onClick={() => handleDeleteSingleMessage(m.id)}
+                                          title="Supprimer cette réclamation"
+                                        >
+                                          <i className="fa-solid fa-trash-can" />
+                                        </button>
+                                      </div>
+                                    </td>
+                                  </tr>
+                                );
+                              })
+                            )}
+                          </tbody>
+                        </table>
+                      </div>
                     </div>
                   ) : (
                     <div>
