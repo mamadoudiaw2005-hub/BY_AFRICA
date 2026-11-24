@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabase';
 import { DEFAULT_CONFIG, DEFAULT_PRODUCTS, DEMO_ADMINS } from '../lib/initialData';
+import { validateSenegalPhone } from '../lib/phoneValidation';
 
 export default function ByAfrikaPage() {
   // ── ÉTATS PRINCIPAUX ──
@@ -33,6 +34,9 @@ export default function ByAfrikaPage() {
 
   const [checkoutOpen, setCheckoutOpen] = useState(false);
   const [checkoutDelivery, setCheckoutDelivery] = useState('delivery'); // 'delivery' | 'pickup'
+  const [checkoutPhone, setCheckoutPhone] = useState('');
+  const [checkoutPhoneError, setCheckoutPhoneError] = useState('');
+  const [checkoutPhoneOperator, setCheckoutPhoneOperator] = useState(null);
   const [confirmedOrder, setConfirmedOrder] = useState(null);
 
   const [authModalOpen, setAuthModalOpen] = useState(false);
@@ -746,6 +750,39 @@ export default function ByAfrikaPage() {
   };
 
   // ── PASSATION DE COMMANDE (ARRIVER PAYER & VALIDATION WHATSAPP) ──
+  // Gestion et formatage interactif du téléphone sénégalais au checkout
+  const handlePhoneInputChange = (val) => {
+    setCheckoutPhone(val);
+    if (!val || val.trim().length === 0) {
+      setCheckoutPhoneError('');
+      setCheckoutPhoneOperator(null);
+      return;
+    }
+    const res = validateSenegalPhone(val);
+    if (res.valid) {
+      setCheckoutPhoneError('');
+      setCheckoutPhoneOperator({ name: res.operator, color: res.badgeColor });
+    } else {
+      let cleaned = val.replace(/[\s\.\-\(\)\/]/g, '');
+      if (cleaned.startsWith('+221')) cleaned = cleaned.substring(4);
+      else if (cleaned.startsWith('00221')) cleaned = cleaned.substring(5);
+      else if (cleaned.startsWith('221') && cleaned.length > 9) cleaned = cleaned.substring(3);
+      const prefix2 = cleaned.substring(0, 2);
+      if (prefix2 === '77' || prefix2 === '78') setCheckoutPhoneOperator({ name: 'Orange', color: '#FF7900' });
+      else if (prefix2 === '76') setCheckoutPhoneOperator({ name: 'Free', color: '#ED1C24' });
+      else if (prefix2 === '70') setCheckoutPhoneOperator({ name: 'Expresso', color: '#0055A5' });
+      else if (prefix2 === '75') setCheckoutPhoneOperator({ name: 'Promobile', color: '#107C41' });
+      else if (prefix2 === '33') setCheckoutPhoneOperator({ name: 'Sonatel Fixe', color: '#555555' });
+      else setCheckoutPhoneOperator(null);
+
+      if (cleaned.length >= 9) {
+        setCheckoutPhoneError(res.error);
+      } else {
+        setCheckoutPhoneError('');
+      }
+    }
+  };
+
   const handleCheckoutSubmit = async (e, isWhatsAppDirect = false) => {
     if (e && e.preventDefault) e.preventDefault();
     if (cart.length === 0) return;
@@ -759,17 +796,22 @@ export default function ByAfrikaPage() {
     }
 
     const customerName = fd.get('name') || user?.name || 'Client';
-    const customerPhone = fd.get('phone') || '';
-    if (!customerPhone) {
-      showToast('Veuillez renseigner votre numéro de téléphone.');
+    const customerPhoneRaw = fd.get('phone') || checkoutPhone || '';
+
+    // Validation stricte du numéro de téléphone sénégalais (SN) pour bloquer les fausses commandes
+    const phoneCheck = validateSenegalPhone(customerPhoneRaw);
+    if (!phoneCheck.valid) {
+      setCheckoutPhoneError(phoneCheck.error);
+      showToast(phoneCheck.error, true);
       return;
     }
+    setCheckoutPhoneError('');
 
     const newOrder = {
       id: `CMD-${Date.now()}`,
       customer: {
         name: customerName,
-        phone: customerPhone,
+        phone: phoneCheck.formatted,
         email: fd.get('email') || (user ? user.email : ''),
         address: checkoutDelivery === 'delivery' ? (fd.get('address') || 'Dakar') : 'Retrait en boutique BY_AFRIKA (Dakar)',
         notes: fd.get('notes') || ''
@@ -817,15 +859,27 @@ export default function ByAfrikaPage() {
   const handleContactSubmit = async (e) => {
     e.preventDefault();
     const fd = new FormData(e.target);
+    const rawContactPhone = fd.get('phone') || '';
+    let validatedPhone = rawContactPhone;
+
+    if (rawContactPhone) {
+      const phoneCheck = validateSenegalPhone(rawContactPhone);
+      if (!phoneCheck.valid) {
+        showToast(phoneCheck.error, true);
+        return;
+      }
+      validatedPhone = phoneCheck.formatted;
+    }
+
     const msg = {
       id: `msg_${Date.now()}`,
       name: fd.get('name'),
-      phone: fd.get('phone'),
+      phone: validatedPhone,
       email: fd.get('email') || '',
       type: fd.get('type'),
       orderId: fd.get('orderId') || '',
       message: fd.get('message'),
-      status: 'Nouveau',
+      status: 'En attente',
       createdAt: new Date().toISOString()
     };
 
@@ -3374,8 +3428,65 @@ export default function ByAfrikaPage() {
                   <input type="text" name="name" className="form-input" defaultValue={user?.name || ''} placeholder="Votre nom complet" required />
                 </div>
                 <div className="form-group">
-                  <label className="form-label">Téléphone <span style={{ color: '#ef4444' }}>*</span></label>
-                  <input type="tel" name="phone" className="form-input" placeholder="+221 7X XXX XX XX" required />
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+                    <label className="form-label" style={{ margin: 0 }}>
+                      Téléphone Sénégal (Obligatoire) <span style={{ color: '#ef4444' }}>*</span>
+                    </label>
+                    {checkoutPhoneOperator && (
+                      <span
+                        style={{
+                          fontSize: '0.74rem',
+                          fontWeight: 700,
+                          padding: '2px 8px',
+                          borderRadius: 12,
+                          color: '#fff',
+                          background: checkoutPhoneOperator.color
+                        }}
+                      >
+                        {checkoutPhoneOperator.name}
+                      </span>
+                    )}
+                  </div>
+                  <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
+                    <span
+                      style={{
+                        position: 'absolute',
+                        left: 12,
+                        fontSize: '0.88rem',
+                        fontWeight: 700,
+                        color: 'var(--text-secondary)',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: 6,
+                        pointerEvents: 'none'
+                      }}
+                    >
+                      <span>🇸🇳</span>
+                      <span>+221</span>
+                    </span>
+                    <input
+                      type="tel"
+                      name="phone"
+                      className="form-input"
+                      value={checkoutPhone}
+                      onChange={(e) => handlePhoneInputChange(e.target.value)}
+                      placeholder="77 123 45 67"
+                      style={{
+                        paddingLeft: 76,
+                        borderColor: checkoutPhoneError ? '#ef4444' : checkoutPhoneOperator ? checkoutPhoneOperator.color : undefined
+                      }}
+                      required
+                    />
+                  </div>
+                  {checkoutPhoneError ? (
+                    <p style={{ color: '#ef4444', fontSize: '0.78rem', margin: '6px 0 0', display: 'flex', alignItems: 'center', gap: 4 }}>
+                      <i className="fa-solid fa-triangle-exclamation" /> {checkoutPhoneError}
+                    </p>
+                  ) : (
+                    <p style={{ color: 'var(--text-secondary)', fontSize: '0.74rem', margin: '4px 0 0' }}>
+                      Numéros mobiles valides : 77, 78 (Orange) • 76 (Free) • 70 (Expresso) • 75 (Promobile).
+                    </p>
+                  )}
                 </div>
               </div>
 
