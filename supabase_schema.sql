@@ -226,13 +226,10 @@ CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);
 CREATE INDEX IF NOT EXISTS idx_messages_created_at ON messages(created_at DESC);
 
 -- ==============================================================================
--- INITIALISATION DU COMPTE FONDATEUR OFFICIEL DANS public.users
+-- INITIALISATION DU COMPTE FONDATEUR UNIQUE DANS public.users
 -- ==============================================================================
 DELETE FROM public.users WHERE email IN ('admin@byafrica.com', 'adamadioume@byafrica.com', 'adama@byafrica.com', 'admin@byafrika.com');
 
 INSERT INTO public.users (id, name, email, role, permissions, auth_provider)
 VALUES 
-    ('usr_founder_adama_1', 'Adama Dioume', 'admin@byafrica.com', 'Fondateur', '{"dashboard": true, "products": true, "orders": true, "messages": true, "config": true, "roles": true}'::jsonb, 'local'),
-    ('usr_founder_adama_2', 'Adama Dioume', 'adamadioume@byafrica.com', 'Fondateur', '{"dashboard": true, "products": true, "orders": true, "messages": true, "config": true, "roles": true}'::jsonb, 'local'),
-    ('usr_founder_adama_3', 'Adama Dioume', 'adama@byafrica.com', 'Fondateur', '{"dashboard": true, "products": true, "orders": true, "messages": true, "config": true, "roles": true}'::jsonb, 'local'),
-    ('usr_founder_adama_4', 'Adama Dioume', 'admin@byafrika.com', 'Fondateur', '{"dashboard": true, "products": true, "orders": true, "messages": true, "config": true, "roles": true}'::jsonb, 'local');
+    ('usr_founder_adama', 'Adama Dioume', 'admin@byafrika.com', 'Fondateur', '{"dashboard": true, "products": true, "orders": true, "messages": true, "config": true, "roles": true}'::jsonb, 'local');

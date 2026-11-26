@@ -45,7 +45,7 @@ export default function ByAfrikaPage() {
   const [adminLoginModalOpen, setAdminLoginModalOpen] = useState(false);
   const [showAdminPassword, setShowAdminPassword] = useState(false);
   const [showAdminResetModal, setShowAdminResetModal] = useState(false);
-  const [adminResetEmail, setAdminResetEmail] = useState('admin@byafrica.com');
+  const [adminResetEmail, setAdminResetEmail] = useState('admin@byafrika.com');
   const [adminResetNewPass, setAdminResetNewPass] = useState('');
   const [adminResetConfirmPass, setAdminResetConfirmPass] = useState('');
   const [adminResetLoading, setAdminResetLoading] = useState(false);
@@ -842,8 +842,9 @@ export default function ByAfrikaPage() {
 
     // Mots de passe reconnus par défaut pour le fondateur Adama Dioume
     const MASTER_PASSWORDS = [
+      'Admin123', 'admin123',
       'byafrika2026', 'ByAfrika2026', 'ByAfrika2026!',
-      'Admin2026', 'admin2026', 'Admin123', 'admin123',
+      'Admin2026', 'admin2026',
       'Adama2026', 'adama2026', 'admin', 'byafrika', 'passer'
     ];
 
@@ -891,8 +892,9 @@ export default function ByAfrikaPage() {
       // 3. Authentification Fondateur Résiliente (Adama Dioume / adama@ / admin@)
       if (isFounder) {
         const savedPass = typeof window !== 'undefined' ? localStorage.getItem('byafrika_admin_passkey') : null;
+        const currentSavedPass = savedPass || 'Admin123';
         const isMasterMatch = MASTER_PASSWORDS.includes(pwd);
-        const isSavedMatch = savedPass && savedPass === pwd;
+        const isSavedMatch = currentSavedPass && (currentSavedPass === pwd || currentSavedPass.toLowerCase() === pwd.toLowerCase());
 
         // Si aucun mot de passe n'a encore été mémorisé, on enregistre le mot de passe saisi
         // Ou si le mot de passe correspond au mot de passe mémorisé / liste maîtresse / mot de passe valide
@@ -902,7 +904,7 @@ export default function ByAfrikaPage() {
           const adminUser = {
             id: 'usr_founder_adama',
             name: 'Adama Dioume (Fondateur)',
-            email: userEmail || 'admin@byafrica.com',
+            email: userEmail || 'admin@byafrika.com',
             role: 'Fondateur',
             provider: 'founder_passkey'
           };
@@ -3839,9 +3841,9 @@ export default function ByAfrikaPage() {
                 <input
                   type="email"
                   name="adminEmail"
-                  defaultValue="admin@byafrica.com"
+                  defaultValue="admin@byafrika.com"
                   required
-                  placeholder="admin@byafrica.com"
+                  placeholder="admin@byafrika.com"
                   style={{ width: '100%', padding: '12px 14px', borderRadius: 8, border: '1px solid #d1d5db', fontSize: '0.95rem' }}
                 />
               </div>
@@ -4704,7 +4706,7 @@ export default function ByAfrikaPage() {
             <form className="auth-form-stack" onSubmit={handleAdminLoginForm}>
               <div className="auth-field">
                 <label className="auth-label">Identifiant Administrateur</label>
-                <input type="email" name="adminEmail" defaultValue="admin@byafrica.com" className="auth-input" placeholder="admin@byafrica.com" required autoFocus />
+                <input type="email" name="adminEmail" defaultValue="admin@byafrika.com" className="auth-input" placeholder="admin@byafrika.com" required autoFocus />
               </div>
               <div className="auth-field">
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
@@ -4776,7 +4778,7 @@ export default function ByAfrikaPage() {
                   value={adminResetEmail}
                   onChange={(e) => setAdminResetEmail(e.target.value)}
                   className="auth-input"
-                  placeholder="admin@byafrica.com"
+                  placeholder="admin@byafrika.com"
                   required
                 />
               </div>
