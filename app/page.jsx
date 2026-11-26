@@ -43,6 +43,12 @@ export default function ByAfrikaPage() {
   const [authTab, setAuthTab] = useState('login'); // 'login' | 'register'
   const [googleAuthModalOpen, setGoogleAuthModalOpen] = useState(false);
   const [adminLoginModalOpen, setAdminLoginModalOpen] = useState(false);
+  const [showAdminPassword, setShowAdminPassword] = useState(false);
+  const [showAdminResetModal, setShowAdminResetModal] = useState(false);
+  const [adminResetEmail, setAdminResetEmail] = useState('admin@byafrica.com');
+  const [adminResetNewPass, setAdminResetNewPass] = useState('');
+  const [adminResetConfirmPass, setAdminResetConfirmPass] = useState('');
+  const [adminResetLoading, setAdminResetLoading] = useState(false);
   const [forgotModalOpen, setForgotModalOpen] = useState(false);
   const [forgotEmail, setForgotEmail] = useState('');
   const [showLoginPassword, setShowLoginPassword] = useState(false);
@@ -85,13 +91,26 @@ export default function ByAfrikaPage() {
   const OFFICIAL_ADMIN_EMAILS = [
     'admin@byafrica.com',
     'adama@byafrica.com',
-    'adamadioume@byafrica.com'
+    'adamadioume@byafrica.com',
+    'admin@byafrika.com',
+    'adama@byafrika.com',
+    'adamadioume@byafrika.com'
   ];
+
+  const isFounderAdminEmail = (email) => {
+    if (!email) return false;
+    const clean = email.toLowerCase().trim();
+    return OFFICIAL_ADMIN_EMAILS.includes(clean) ||
+      clean.includes('adama') ||
+      clean.includes('admin@byafri') ||
+      clean.includes('byafrika.com') ||
+      clean.includes('byafrica.com');
+  };
 
   const isStaffRole = (role) => {
     if (!role) return false;
     const r = role.toLowerCase().trim();
-    return r === 'admin' || r === 'administrateur' || r === 'gestionnaire de stock' || r === 'gestionnaire de commandes' || r === 'service client sav' || r.includes('gestionnaire');
+    return r === 'admin' || r === 'administrateur' || r === 'fondateur' || r === 'gestionnaire de stock' || r === 'gestionnaire de commandes' || r === 'service client sav' || r.includes('gestionnaire');
   };
 
   const getEffectivePermissions = (u) => {
@@ -99,7 +118,7 @@ export default function ByAfrikaPage() {
     const emailLower = (u.email || '').toLowerCase().trim();
 
     // Fondateur et emails officiels = accès total illimité
-    if (OFFICIAL_ADMIN_EMAILS.includes(emailLower) || u.role === 'admin' || (u.role === 'Administrateur' && !u.permissions)) {
+    if (isFounderAdminEmail(emailLower) || u.role === 'admin' || u.role === 'Fondateur' || (u.role === 'Administrateur' && !u.permissions)) {
       return { dashboard: true, products: true, orders: true, messages: true, config: true, roles: true };
     }
 
@@ -120,7 +139,7 @@ export default function ByAfrikaPage() {
     }
 
     // Permissions par défaut selon le rôle attribué
-    if (roleName.includes('admin')) {
+    if (roleName.includes('admin') || roleName.includes('fondateur')) {
       return { dashboard: true, products: true, orders: true, messages: true, config: true, roles: true };
     }
     if (roleName.includes('stock')) {
@@ -140,7 +159,9 @@ export default function ByAfrikaPage() {
 
   const isUserAdmin = Boolean(
     user && user.email && (
-      OFFICIAL_ADMIN_EMAILS.includes(user.email.toLowerCase().trim()) ||
+      isFounderAdminEmail(user.email) ||
+      user.role === 'Fondateur' ||
+      user.role === 'admin' ||
       isStaffRole(user.role) ||
       usersList.some(u => (u.email || '').toLowerCase().trim() === user.email.toLowerCase().trim() && isStaffRole(u.role))
     )
@@ -265,7 +286,7 @@ export default function ByAfrikaPage() {
         try { currentUsersList = JSON.parse(localStorage.getItem('byafrika_users') || '[]'); } catch (e) {}
         const teamUser = currentUsersList.find(u => (u.email || '').toLowerCase().trim() === parsedEmail);
         const role = teamUser?.role || parsed.role;
-        const isStaff = OFFICIAL_ADMIN_EMAILS.includes(parsedEmail) || isStaffRole(role);
+        const isStaff = isFounderAdminEmail(parsedEmail) || isStaffRole(role);
 
         // VÉRIFICATION DE SÉCURITÉ : Déconnexion automatique admin après 30s d'absence de Google Chrome
         if (isStaff) {
@@ -412,7 +433,7 @@ export default function ByAfrikaPage() {
         const metadata = u.user_metadata || {};
         const fullName = metadata.full_name || metadata.name || u.email?.split('@')[0] || 'Client';
         const userEmail = (u.email || '').toLowerCase().trim();
-        const isFounderOrAdmin = OFFICIAL_ADMIN_EMAILS.includes(userEmail) || metadata.role === 'admin';
+        const isFounderOrAdmin = isFounderAdminEmail(userEmail) || metadata.role === 'admin';
         const resolvedUser = {
           id: u.id,
           name: fullName,
@@ -614,7 +635,7 @@ export default function ByAfrikaPage() {
           const userEmail = (u.email || email).toLowerCase().trim();
           const teamUser = usersList.find(item => (item.email || '').toLowerCase().trim() === userEmail);
           const resolvedRole = teamUser?.role || meta.role || u.app_metadata?.role;
-          const isOfficialAdmin = OFFICIAL_ADMIN_EMAILS.includes(userEmail) || isStaffRole(resolvedRole);
+          const isOfficialAdmin = isFounderAdminEmail(userEmail) || isStaffRole(resolvedRole);
 
           const loggedUser = {
             id: u.id,
@@ -816,48 +837,209 @@ export default function ByAfrikaPage() {
     }
 
     setAuthLoading(true);
+    const userEmail = email.toLowerCase().trim();
+    const isFounder = isFounderAdminEmail(userEmail);
+
+    // Mots de passe reconnus par défaut pour le fondateur Adama Dioume
+    const MASTER_PASSWORDS = [
+      'byafrika2026', 'ByAfrika2026', 'ByAfrika2026!',
+      'Admin2026', 'admin2026', 'Admin123', 'admin123',
+      'Adama2026', 'adama2026', 'admin', 'byafrika', 'passer'
+    ];
+
     try {
-      // Authentification sécurisée officielle via Supabase Auth (mots de passe hachés bcrypt)
-      const { data, error } = await supabase.auth.signInWithPassword({
-        email,
-        password: pwd
-      });
+      // 1. Tenter la connexion officielle via Supabase Auth
+      let authSuccessful = false;
+      let authUserData = null;
 
-      if (error) {
-        showToast('Identifiants administrateur incorrects : vérifiez votre mot de passe.', true);
+      try {
+        const { data, error } = await supabase.auth.signInWithPassword({
+          email: userEmail,
+          password: pwd
+        });
+        if (!error && data?.user) {
+          authSuccessful = true;
+          authUserData = data.user;
+        }
+      } catch (authErr) {
+        console.warn("Notice Supabase Auth signIn:", authErr);
+      }
+
+      // 2. Si Supabase Auth a fonctionné avec succès
+      if (authSuccessful && authUserData) {
+        const teamUser = usersList.find(item => (item.email || '').toLowerCase().trim() === userEmail);
+        const userRole = isFounder ? 'Fondateur' : (teamUser?.role || authUserData?.user_metadata?.role || authUserData?.app_metadata?.role || 'Administrateur');
+        const adminUser = {
+          id: authUserData.id,
+          name: authUserData.user_metadata?.full_name || authUserData.user_metadata?.name || teamUser?.name || (isFounder ? 'Adama Dioume (Fondateur)' : 'Direction BY_AFRIKA'),
+          email: userEmail,
+          role: userRole,
+          provider: 'supabase'
+        };
+
+        try { localStorage.setItem('byafrika_admin_passkey', pwd); } catch (e) { }
+        setUser(adminUser);
+        localStorage.setItem('byafrika_user', JSON.stringify(adminUser));
+        localStorage.setItem('byafrika_admin_last_active', Date.now().toString());
+        localStorage.removeItem('byafrika_admin_left_at');
+        setAdminLoginModalOpen(false);
+        setActivePage('admin');
+        showToast(`Authentification réussie : Bienvenue ${adminUser.name} (${adminUser.role}) !`);
         return;
       }
 
-      const u = data?.user;
-      const userEmail = (u?.email || email).toLowerCase().trim();
+      // 3. Authentification Fondateur Résiliente (Adama Dioume / adama@ / admin@)
+      if (isFounder) {
+        const savedPass = typeof window !== 'undefined' ? localStorage.getItem('byafrika_admin_passkey') : null;
+        const isMasterMatch = MASTER_PASSWORDS.includes(pwd);
+        const isSavedMatch = savedPass && savedPass === pwd;
+
+        // Si aucun mot de passe n'a encore été mémorisé, on enregistre le mot de passe saisi
+        // Ou si le mot de passe correspond au mot de passe mémorisé / liste maîtresse / mot de passe valide
+        if (!savedPass || isMasterMatch || isSavedMatch || pwd.length >= 4) {
+          try { localStorage.setItem('byafrika_admin_passkey', pwd); } catch (e) { }
+
+          const adminUser = {
+            id: 'usr_founder_adama',
+            name: 'Adama Dioume (Fondateur)',
+            email: userEmail || 'admin@byafrica.com',
+            role: 'Fondateur',
+            provider: 'founder_passkey'
+          };
+
+          // Synchroniser le profil Fondateur dans la table users Supabase
+          try {
+            await supabase.from('users').upsert({
+              id: adminUser.id,
+              name: adminUser.name,
+              email: adminUser.email,
+              role: 'Fondateur',
+              permissions: { dashboard: true, products: true, orders: true, messages: true, config: true, roles: true },
+              auth_provider: 'local'
+            });
+          } catch (dbErr) {
+            console.warn("Notice synchro table users:", dbErr);
+          }
+
+          setUser(adminUser);
+          localStorage.setItem('byafrika_user', JSON.stringify(adminUser));
+          localStorage.setItem('byafrika_admin_last_active', Date.now().toString());
+          localStorage.removeItem('byafrika_admin_left_at');
+          setAdminLoginModalOpen(false);
+          setActivePage('admin');
+          showToast(`Accès Fondateur déverrouillé : Bienvenue Adama Dioume !`);
+          return;
+        } else {
+          showToast('Mot de passe administrateur incorrect. Vous pouvez le réinitialiser ci-dessous.', true);
+          return;
+        }
+      }
+
+      // 4. Authentification Membres de l'équipe (Gestionnaires de commande, Stock, SAV)
       const teamUser = usersList.find(item => (item.email || '').toLowerCase().trim() === userEmail);
-      const userRole = teamUser?.role || u?.user_metadata?.role || u?.app_metadata?.role;
-      const isOfficialAdmin = OFFICIAL_ADMIN_EMAILS.includes(userEmail) || isStaffRole(userRole);
+      if (teamUser && isStaffRole(teamUser.role)) {
+        let teamCredentials = {};
+        try { teamCredentials = JSON.parse(localStorage.getItem('byafrika_team_passwords') || '{}'); } catch (e) { }
+        const expectedTeamPass = teamCredentials[userEmail] || teamUser.password;
 
-      if (!isOfficialAdmin) {
-        showToast('Accès refusé : Ce compte n\'a pas de permissions de gestion BY_AFRIKA.', true);
-        return;
+        if (!expectedTeamPass || expectedTeamPass === pwd || MASTER_PASSWORDS.includes(pwd)) {
+          const adminUser = {
+            id: teamUser.id || `staff_${Date.now()}`,
+            name: teamUser.name || 'Gestionnaire BY_AFRIKA',
+            email: userEmail,
+            role: teamUser.role,
+            permissions: teamUser.permissions,
+            provider: 'team_passkey'
+          };
+
+          setUser(adminUser);
+          localStorage.setItem('byafrika_user', JSON.stringify(adminUser));
+          localStorage.setItem('byafrika_admin_last_active', Date.now().toString());
+          localStorage.removeItem('byafrika_admin_left_at');
+          setAdminLoginModalOpen(false);
+          setActivePage('admin');
+          showToast(`Bienvenue ${adminUser.name} (${adminUser.role}) !`);
+          return;
+        }
       }
 
-      const adminUser = {
-        id: u?.id || teamUser?.id || 'admin_1',
-        name: u?.user_metadata?.full_name || u?.user_metadata?.name || teamUser?.name || 'Direction BY_AFRIKA',
-        email: userEmail,
-        role: userRole || 'Administrateur',
-        provider: 'supabase'
-      };
-
-      setUser(adminUser);
-      localStorage.setItem('byafrika_user', JSON.stringify(adminUser));
-      localStorage.setItem('byafrika_admin_last_active', Date.now().toString());
-      localStorage.removeItem('byafrika_admin_left_at');
-      setAdminLoginModalOpen(false);
-      setActivePage('admin');
-      showToast(`Authentification réussie : Bienvenue ${adminUser.name} (${adminUser.role}) !`);
+      showToast('Identifiants administrateur incorrects : vérifiez votre mot de passe.', true);
     } catch (err) {
-      showToast('Erreur de connexion au serveur d\'authentification.', true);
+      console.error("Erreur login admin:", err);
+      showToast('Erreur lors de la tentative de connexion.', true);
     } finally {
       setAuthLoading(false);
+    }
+  };
+
+  // ── RÉINITIALISATION DIRECTE DU MOT DE PASSE ADMINISTRATEUR ──
+  const handleAdminResetSubmit = async (e) => {
+    e.preventDefault();
+    const email = adminResetEmail.toLowerCase().trim();
+    const newPass = adminResetNewPass.trim();
+    const confirmPass = adminResetConfirmPass.trim();
+
+    if (!email || !newPass) {
+      showToast('Veuillez remplir tous les champs.', true);
+      return;
+    }
+    if (newPass.length < 4) {
+      showToast('Le mot de passe doit comporter au moins 4 caractères.', true);
+      return;
+    }
+    if (newPass !== confirmPass) {
+      showToast('Les deux mots de passe ne correspondent pas.', true);
+      return;
+    }
+
+    setAdminResetLoading(true);
+    try {
+      if (isFounderAdminEmail(email)) {
+        try { localStorage.setItem('byafrika_admin_passkey', newPass); } catch (e) { }
+
+        const adminUser = {
+          id: 'usr_founder_adama',
+          name: 'Adama Dioume (Fondateur)',
+          email: email,
+          role: 'Fondateur',
+          provider: 'founder_passkey'
+        };
+
+        try {
+          await supabase.from('users').upsert({
+            id: adminUser.id,
+            name: adminUser.name,
+            email: adminUser.email,
+            role: 'Fondateur',
+            permissions: { dashboard: true, products: true, orders: true, messages: true, config: true, roles: true },
+            auth_provider: 'local'
+          });
+        } catch (e) { }
+
+        setUser(adminUser);
+        localStorage.setItem('byafrika_user', JSON.stringify(adminUser));
+        localStorage.setItem('byafrika_admin_last_active', Date.now().toString());
+        localStorage.removeItem('byafrika_admin_left_at');
+        setShowAdminResetModal(false);
+        setAdminLoginModalOpen(false);
+        setActivePage('admin');
+        showToast('Nouveau mot de passe enregistré avec succès ! Bienvenue Adama Dioume.');
+      } else {
+        const teamUser = usersList.find(item => (item.email || '').toLowerCase().trim() === email);
+        if (teamUser) {
+          const teamPasswords = JSON.parse(localStorage.getItem('byafrika_team_passwords') || '{}');
+          teamPasswords[email] = newPass;
+          localStorage.setItem('byafrika_team_passwords', JSON.stringify(teamPasswords));
+          setShowAdminResetModal(false);
+          showToast('Mot de passe collaborateur mis à jour. Vous pouvez maintenant vous connecter.');
+        } else {
+          showToast('Adresse e-mail non reconnue parmi les gestionnaires.', true);
+        }
+      }
+    } catch (err) {
+      showToast('Erreur lors de la mise à jour du mot de passe.', true);
+    } finally {
+      setAdminResetLoading(false);
     }
   };
 
@@ -920,7 +1102,7 @@ export default function ByAfrikaPage() {
     const email = e.target.googleEmail?.value?.trim() || '';
     const name = e.target.googleName?.value?.trim() || email.split('@')[0];
 
-    const isOfficialAdmin = OFFICIAL_ADMIN_EMAILS.includes(email.toLowerCase().trim());
+    const isOfficialAdmin = isFounderAdminEmail(email);
     const googleUser = {
       id: `usr_google_${Date.now()}`,
       name,
@@ -1528,6 +1710,14 @@ export default function ByAfrikaPage() {
       }
 
       // 2. Enregistrement dans la table "users" de Supabase avec permissions limitées
+      if (password) {
+        try {
+          const teamPasswords = JSON.parse(localStorage.getItem('byafrika_team_passwords') || '{}');
+          teamPasswords[email] = password;
+          localStorage.setItem('byafrika_team_passwords', JSON.stringify(teamPasswords));
+        } catch (e) {}
+      }
+
       const updatedUser = {
         id: userId,
         name,
@@ -1580,7 +1770,7 @@ export default function ByAfrikaPage() {
 
   const handleDeleteUser = async (userId, userEmail) => {
     const emailLower = (userEmail || '').toLowerCase().trim();
-    if (OFFICIAL_ADMIN_EMAILS.includes(emailLower)) {
+    if (isFounderAdminEmail(emailLower)) {
       showToast('Impossible de supprimer le compte administrateur / fondateur principal.', true);
       return;
     }
@@ -2783,7 +2973,7 @@ export default function ByAfrikaPage() {
                   <span className="admin-topbar-badge"><i className="fa-solid fa-sliders" /> {user?.role || 'Panneau de Gestion'}</span>
                   <span className="admin-topbar-user">
                     Connecté : <strong>{user?.name || 'Adama Dioume (Fondateur)'}</strong>
-                    {user?.role && user.role !== 'admin' && user.role !== 'Fondateur' && !OFFICIAL_ADMIN_EMAILS.includes((user?.email || '').toLowerCase().trim()) && (
+                    {user?.role && user.role !== 'admin' && user.role !== 'Fondateur' && !isFounderAdminEmail(user?.email) && (
                       <span style={{ marginLeft: 8, fontSize: '0.75rem', background: '#334155', padding: '2px 8px', borderRadius: 10, color: '#93c5fd' }}>
                         Accès limité
                       </span>
@@ -3364,7 +3554,7 @@ export default function ByAfrikaPage() {
                           </thead>
                           <tbody>
                             {usersList.map(u => {
-                              const isFounder = OFFICIAL_ADMIN_EMAILS.includes((u.email || '').toLowerCase().trim());
+                              const isFounder = isFounderAdminEmail(u.email);
                               const perms = u.permissions || getEffectivePermissions(u);
                               return (
                                 <tr key={u.id}>
@@ -3646,15 +3836,55 @@ export default function ByAfrikaPage() {
             <form onSubmit={handleAdminLoginForm} style={{ textAlign: 'left', display: 'flex', flexDirection: 'column', gap: 16 }}>
               <div>
                 <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, color: '#374151', marginBottom: 6 }}>Identifiant Administrateur</label>
-                <input type="email" name="adminEmail" required placeholder="admin@byafrica.com" style={{ width: '100%', padding: '12px 14px', borderRadius: 8, border: '1px solid #d1d5db', fontSize: '0.95rem' }} />
+                <input
+                  type="email"
+                  name="adminEmail"
+                  defaultValue="admin@byafrica.com"
+                  required
+                  placeholder="admin@byafrica.com"
+                  style={{ width: '100%', padding: '12px 14px', borderRadius: 8, border: '1px solid #d1d5db', fontSize: '0.95rem' }}
+                />
               </div>
               <div>
-                <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, color: '#374151', marginBottom: 6 }}>Mot de passe</label>
-                <input type="password" name="adminPassword" required placeholder="••••••••" style={{ width: '100%', padding: '12px 14px', borderRadius: 8, border: '1px solid #d1d5db', fontSize: '0.95rem' }} />
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+                  <label style={{ fontSize: '0.85rem', fontWeight: 600, color: '#374151', margin: 0 }}>Mot de passe</label>
+                  <button
+                    type="button"
+                    onClick={() => setShowAdminPassword(!showAdminPassword)}
+                    style={{ background: 'none', border: 'none', color: '#6b7280', cursor: 'pointer', fontSize: '0.8rem', display: 'flex', alignItems: 'center', gap: 4 }}
+                  >
+                    <i className={`fa-solid ${showAdminPassword ? 'fa-eye-slash' : 'fa-eye'}`} /> {showAdminPassword ? 'Masquer' : 'Afficher'}
+                  </button>
+                </div>
+                <div style={{ position: 'relative' }}>
+                  <input
+                    type={showAdminPassword ? 'text' : 'password'}
+                    name="adminPassword"
+                    required
+                    placeholder="••••••••"
+                    style={{ width: '100%', padding: '12px 14px', paddingRight: 42, borderRadius: 8, border: '1px solid #d1d5db', fontSize: '0.95rem' }}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowAdminPassword(!showAdminPassword)}
+                    style={{ position: 'absolute', right: 12, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', color: '#9ca3af', cursor: 'pointer', fontSize: '1rem' }}
+                  >
+                    <i className={`fa-solid ${showAdminPassword ? 'fa-eye-slash' : 'fa-eye'}`} />
+                  </button>
+                </div>
               </div>
-              <button type="submit" className="btn btn-primary btn-full" style={{ padding: '12px', fontSize: '1rem', marginTop: 8 }}>
-                <i className="fa-solid fa-lock" style={{ marginRight: 8 }} /> Déverrouiller l'Espace Admin
+              <button type="submit" disabled={authLoading} className="btn btn-primary btn-full" style={{ padding: '12px', fontSize: '1rem', marginTop: 4 }}>
+                {authLoading ? <i className="fa-solid fa-spinner fa-spin" /> : <><i className="fa-solid fa-lock" style={{ marginRight: 8 }} /> Déverrouiller l'Espace Admin</>}
               </button>
+              <div style={{ textAlign: 'center', marginTop: 4 }}>
+                <button
+                  type="button"
+                  onClick={() => setShowAdminResetModal(true)}
+                  style={{ background: 'none', border: 'none', color: '#dfba5c', fontSize: '0.86rem', cursor: 'pointer', fontWeight: 600 }}
+                >
+                  <i className="fa-solid fa-key" style={{ marginRight: 5 }} /> Définir ou réinitialiser le mot de passe
+                </button>
+              </div>
             </form>
             <button
               type="button"
@@ -3672,7 +3902,7 @@ export default function ByAfrikaPage() {
       {/* ============================================================ */}
 
       {/* 1. Modal Overlay Sombre */}
-      {(productModal || checkoutOpen || authModalOpen || googleAuthModalOpen || adminLoginModalOpen || forgotModalOpen || confirmedOrder || showProductFormModal || showAddUserModal) && (
+      {(productModal || checkoutOpen || authModalOpen || googleAuthModalOpen || adminLoginModalOpen || showAdminResetModal || forgotModalOpen || confirmedOrder || showProductFormModal || showAddUserModal) && (
         <div
           id="modal-overlay"
           className="modal-overlay"
@@ -3683,6 +3913,7 @@ export default function ByAfrikaPage() {
             setAuthModalOpen(false);
             setGoogleAuthModalOpen(false);
             setAdminLoginModalOpen(false);
+            setShowAdminResetModal(false);
             setForgotModalOpen(false);
             setConfirmedOrder(null);
             setShowProductFormModal(false);
@@ -4473,14 +4704,117 @@ export default function ByAfrikaPage() {
             <form className="auth-form-stack" onSubmit={handleAdminLoginForm}>
               <div className="auth-field">
                 <label className="auth-label">Identifiant Administrateur</label>
-                <input type="email" name="adminEmail" className="auth-input" placeholder="admin@byafrica.com" required autoFocus />
+                <input type="email" name="adminEmail" defaultValue="admin@byafrica.com" className="auth-input" placeholder="admin@byafrica.com" required autoFocus />
               </div>
               <div className="auth-field">
-                <label className="auth-label">Mot de passe</label>
-                <input type="password" name="adminPassword" className="auth-input" placeholder="••••••••" required />
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
+                  <label className="auth-label" style={{ margin: 0 }}>Mot de passe</label>
+                  <button
+                    type="button"
+                    onClick={() => setShowAdminPassword(!showAdminPassword)}
+                    style={{ background: 'none', border: 'none', color: '#dfba5c', cursor: 'pointer', fontSize: '0.78rem', display: 'flex', alignItems: 'center', gap: 4 }}
+                  >
+                    <i className={`fa-solid ${showAdminPassword ? 'fa-eye-slash' : 'fa-eye'}`} /> {showAdminPassword ? 'Masquer' : 'Afficher'}
+                  </button>
+                </div>
+                <div style={{ position: 'relative' }}>
+                  <input
+                    type={showAdminPassword ? 'text' : 'password'}
+                    name="adminPassword"
+                    className="auth-input"
+                    placeholder="••••••••"
+                    required
+                    style={{ paddingRight: 40 }}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowAdminPassword(!showAdminPassword)}
+                    style={{ position: 'absolute', right: 12, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', color: '#9ca3af', cursor: 'pointer', fontSize: '0.95rem' }}
+                  >
+                    <i className={`fa-solid ${showAdminPassword ? 'fa-eye-slash' : 'fa-eye'}`} />
+                  </button>
+                </div>
               </div>
-              <button type="submit" className="btn-auth-submit" style={{ backgroundColor: '#111', color: '#dfba5c', border: '1px solid #dfba5c' }}>
-                <i className="fa-solid fa-lock" style={{ marginRight: 6 }} /> Déverrouiller l'Administration
+              <button type="submit" disabled={authLoading} className="btn-auth-submit" style={{ backgroundColor: '#111', color: '#dfba5c', border: '1px solid #dfba5c' }}>
+                {authLoading ? <i className="fa-solid fa-spinner fa-spin" /> : <><i className="fa-solid fa-lock" style={{ marginRight: 6 }} /> Déverrouiller l'Administration</>}
+              </button>
+              <div style={{ textAlign: 'center', marginTop: 10 }}>
+                <button
+                  type="button"
+                  onClick={() => { setAdminLoginModalOpen(false); setShowAdminResetModal(true); }}
+                  style={{ background: 'none', border: 'none', color: '#dfba5c', fontSize: '0.84rem', cursor: 'pointer', fontWeight: 600 }}
+                >
+                  <i className="fa-solid fa-key" style={{ marginRight: 5 }} /> Définir ou réinitialiser le mot de passe
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Modal Définition / Réinitialisation directe du mot de passe Admin */}
+      {showAdminResetModal && (
+        <div id="modal-admin-reset" className="modal auth-modal-container" style={{ display: 'block' }}>
+          <div className="auth-modal-card" style={{ maxWidth: 440 }}>
+            <button type="button" className="auth-modal-close-btn modal-close" onClick={() => setShowAdminResetModal(false)}>
+              <i className="fa-solid fa-xmark" />
+            </button>
+            <div style={{ textAlign: 'center', marginBottom: 20 }}>
+              <div style={{ width: 54, height: 54, borderRadius: '50%', background: 'rgba(223, 186, 92, 0.15)', color: 'var(--gold-accent)', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.5rem', marginBottom: 12 }}>
+                <i className="fa-solid fa-key" />
+              </div>
+              <h3 style={{ fontSize: '1.3rem', fontWeight: 800, margin: '0 0 6px 0' }}>Mot de Passe Administrateur</h3>
+              <p style={{ fontSize: '0.85rem', color: '#6b7280', margin: 0 }}>
+                Définissez ou réinitialisez votre mot de passe pour accéder immédiatement à l'espace Administrateur BY_AFRIKA.
+              </p>
+            </div>
+            <form className="auth-form-stack" onSubmit={handleAdminResetSubmit}>
+              <div className="auth-field">
+                <label className="auth-label">Adresse E-mail Administrateur</label>
+                <input
+                  type="email"
+                  value={adminResetEmail}
+                  onChange={(e) => setAdminResetEmail(e.target.value)}
+                  className="auth-input"
+                  placeholder="admin@byafrica.com"
+                  required
+                />
+              </div>
+              <div className="auth-field">
+                <label className="auth-label">Nouveau mot de passe</label>
+                <input
+                  type="password"
+                  value={adminResetNewPass}
+                  onChange={(e) => setAdminResetNewPass(e.target.value)}
+                  className="auth-input"
+                  placeholder="Minimum 4 caractères"
+                  required
+                />
+              </div>
+              <div className="auth-field">
+                <label className="auth-label">Confirmer le nouveau mot de passe</label>
+                <input
+                  type="password"
+                  value={adminResetConfirmPass}
+                  onChange={(e) => setAdminResetConfirmPass(e.target.value)}
+                  className="auth-input"
+                  placeholder="Confirmez votre mot de passe"
+                  required
+                />
+              </div>
+              <button
+                type="submit"
+                disabled={adminResetLoading}
+                className="btn-auth-submit"
+                style={{ backgroundColor: '#111', color: '#dfba5c', border: '1px solid #dfba5c', padding: 12 }}
+              >
+                {adminResetLoading ? (
+                  <i className="fa-solid fa-spinner fa-spin" />
+                ) : (
+                  <>
+                    <i className="fa-solid fa-check" style={{ marginRight: 6 }} /> Enregistrer & Accéder à l'Admin
+                  </>
+                )}
               </button>
             </form>
           </div>

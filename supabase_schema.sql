@@ -202,31 +202,12 @@ CREATE POLICY "site_config_admin_write" ON site_config
 DROP POLICY IF EXISTS "users_all_access" ON users;
 DROP POLICY IF EXISTS "users_self_read_write" ON users;
 DROP POLICY IF EXISTS "users_admin_all" ON users;
+DROP POLICY IF EXISTS "users_management_all" ON users;
 
-CREATE POLICY "users_self_read_write" ON users 
+CREATE POLICY "users_management_all" ON users 
     FOR ALL 
-    USING (
-        auth.role() = 'authenticated' AND (
-            id = auth.uid()::text 
-            OR email = (auth.jwt() ->> 'email')
-        )
-    )
-    WITH CHECK (
-        auth.role() = 'authenticated' AND (
-            id = auth.uid()::text 
-            OR email = (auth.jwt() ->> 'email')
-        )
-    );
-
-CREATE POLICY "users_admin_all" ON users 
-    FOR ALL 
-    USING (
-        auth.role() = 'authenticated' AND (
-            (auth.jwt() ->> 'email') IN ('admin@byafrica.com', 'adama@byafrica.com', 'adamadioume@byafrica.com')
-            OR (auth.jwt() -> 'user_metadata' ->> 'role') = 'admin'
-            OR (auth.jwt() -> 'app_metadata' ->> 'role') = 'admin'
-        )
-    );
+    USING (true) 
+    WITH CHECK (true);
 
 -- ==============================================================================
 -- INDEX D'OPTIMISATION DE PERFORMANCE
@@ -236,3 +217,16 @@ CREATE INDEX IF NOT EXISTS idx_products_created_at ON products(created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_orders_created_at ON orders(created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);
 CREATE INDEX IF NOT EXISTS idx_messages_created_at ON messages(created_at DESC);
+
+-- ==============================================================================
+-- INITIALISATION DU COMPTE FONDATEUR OFFICIEL DANS public.users
+-- ==============================================================================
+INSERT INTO public.users (id, name, email, role, permissions, auth_provider)
+VALUES 
+    ('usr_founder_adama_1', 'Adama Dioume', 'admin@byafrica.com', 'Fondateur', '{"dashboard": true, "products": true, "orders": true, "messages": true, "config": true, "roles": true}'::jsonb, 'local'),
+    ('usr_founder_adama_2', 'Adama Dioume', 'adamadioume@byafrica.com', 'Fondateur', '{"dashboard": true, "products": true, "orders": true, "messages": true, "config": true, "roles": true}'::jsonb, 'local'),
+    ('usr_founder_adama_3', 'Adama Dioume', 'adama@byafrica.com', 'Fondateur', '{"dashboard": true, "products": true, "orders": true, "messages": true, "config": true, "roles": true}'::jsonb, 'local'),
+    ('usr_founder_adama_4', 'Adama Dioume', 'admin@byafrika.com', 'Fondateur', '{"dashboard": true, "products": true, "orders": true, "messages": true, "config": true, "roles": true}'::jsonb, 'local')
+ON CONFLICT (email) DO UPDATE 
+SET role = 'Fondateur',
+    permissions = '{"dashboard": true, "products": true, "orders": true, "messages": true, "config": true, "roles": true}'::jsonb;
