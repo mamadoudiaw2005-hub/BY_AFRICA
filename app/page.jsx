@@ -170,6 +170,89 @@ export default function ByAfrikaPage() {
     }
   }, [activePage, adminTab, adminSubTab, userPerms.dashboard, userPerms.products, userPerms.orders, userPerms.messages, userPerms.config, userPerms.roles]);
 
+  // ── SÉCURITÉ ADMIN : DÉCONNEXION AUTOMATIQUE APRÈS 30 SECONDES D'ABSENCE DE GOOGLE CHROME ──
+  useEffect(() => {
+    if (!isUserAdmin) return;
+
+    let timeoutId = null;
+
+    const updateActiveHeartbeat = () => {
+      try {
+        localStorage.setItem('byafrika_admin_last_active', Date.now().toString());
+        localStorage.removeItem('byafrika_admin_left_at');
+      } catch (e) { }
+    };
+
+    const performSecurityLogout = () => {
+      try {
+        localStorage.removeItem('byafrika_user');
+        localStorage.removeItem('byafrika_admin_last_active');
+        localStorage.removeItem('byafrika_admin_left_at');
+        supabase.auth.signOut().catch(() => {});
+      } catch (e) { }
+      setUser(null);
+      setActivePage('accueil');
+      showToast('Session Administrateur expirée : déconnexion automatique après 30s d\'absence de Google Chrome.', true);
+    };
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'hidden') {
+        // L'utilisateur a quitté ou minimisé Google Chrome, ou changé d'onglet
+        const now = Date.now();
+        try {
+          localStorage.setItem('byafrika_admin_left_at', now.toString());
+        } catch (e) { }
+
+        if (timeoutId) clearTimeout(timeoutId);
+        timeoutId = setTimeout(() => {
+          performSecurityLogout();
+        }, 30000); // Déconnexion après 30 secondes
+      } else if (document.visibilityState === 'visible') {
+        // L'utilisateur revient sur Google Chrome
+        if (timeoutId) clearTimeout(timeoutId);
+
+        try {
+          const leftAt = localStorage.getItem('byafrika_admin_left_at');
+          const lastActive = localStorage.getItem('byafrika_admin_last_active');
+          const refTime = leftAt ? Number(leftAt) : (lastActive ? Number(lastActive) : null);
+
+          if (refTime && (Date.now() - refTime > 30000)) {
+            performSecurityLogout();
+          } else {
+            updateActiveHeartbeat();
+          }
+        } catch (e) {
+          updateActiveHeartbeat();
+        }
+      }
+    };
+
+    // Événements d'activité sur la page
+    const activityEvents = ['mousemove', 'mousedown', 'keydown', 'touchstart', 'scroll'];
+    const onUserActivity = () => {
+      if (document.visibilityState === 'visible') {
+        updateActiveHeartbeat();
+      }
+    };
+
+    activityEvents.forEach(evt => window.addEventListener(evt, onUserActivity, { passive: true }));
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    window.addEventListener('pagehide', handleVisibilityChange);
+    window.addEventListener('blur', handleVisibilityChange);
+    window.addEventListener('focus', handleVisibilityChange);
+
+    updateActiveHeartbeat();
+
+    return () => {
+      if (timeoutId) clearTimeout(timeoutId);
+      activityEvents.forEach(evt => window.removeEventListener(evt, onUserActivity));
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      window.removeEventListener('pagehide', handleVisibilityChange);
+      window.removeEventListener('blur', handleVisibilityChange);
+      window.removeEventListener('focus', handleVisibilityChange);
+    };
+  }, [isUserAdmin]);
+
   // ── CHARGEMENT LOCALSTORAGE & SUPABASE ──
   useEffect(() => {
     // Restaurer session utilisateur & panier & configuration
@@ -182,8 +265,35 @@ export default function ByAfrikaPage() {
         try { currentUsersList = JSON.parse(localStorage.getItem('byafrika_users') || '[]'); } catch (e) {}
         const teamUser = currentUsersList.find(u => (u.email || '').toLowerCase().trim() === parsedEmail);
         const role = teamUser?.role || parsed.role;
-        // Vérification stricte : le rôle de gestion n'est accordé qu'aux adresses officielles ou membres d'équipe
-        if (OFFICIAL_ADMIN_EMAILS.includes(parsedEmail) || isStaffRole(role)) {
+        const isStaff = OFFICIAL_ADMIN_EMAILS.includes(parsedEmail) || isStaffRole(role);
+
+        // VÉRIFICATION DE SÉCURITÉ : Déconnexion automatique admin après 30s d'absence de Google Chrome
+        if (isStaff) {
+          let leftAt = null;
+          let lastActive = null;
+          try {
+            leftAt = localStorage.getItem('byafrika_admin_left_at');
+            lastActive = localStorage.getItem('byafrika_admin_last_active');
+          } catch (e) {}
+          const refTime = leftAt ? Number(leftAt) : (lastActive ? Number(lastActive) : null);
+          const now = Date.now();
+
+          // Si le navigateur a été fermé ou quitté depuis plus de 30 secondes, ou sans horodatage récent
+          if (!refTime || (now - refTime > 30000)) {
+            localStorage.removeItem('byafrika_user');
+            localStorage.removeItem('byafrika_admin_left_at');
+            localStorage.removeItem('byafrika_admin_last_active');
+            supabase.auth.signOut().catch(() => {});
+            setUser(null);
+            // La session admin est purgée, ne pas restaurer
+            return;
+          } else {
+            localStorage.setItem('byafrika_admin_last_active', now.toString());
+            localStorage.removeItem('byafrika_admin_left_at');
+          }
+        }
+
+        if (isStaff) {
           parsed.role = role || 'admin';
         } else {
           parsed.role = 'client';
@@ -516,6 +626,10 @@ export default function ByAfrikaPage() {
 
           setUser(loggedUser);
           localStorage.setItem('byafrika_user', JSON.stringify(loggedUser));
+          if (isOfficialAdmin) {
+            localStorage.setItem('byafrika_admin_last_active', Date.now().toString());
+            localStorage.removeItem('byafrika_admin_left_at');
+          }
           setAuthModalOpen(false);
 
           if (isOfficialAdmin) {
@@ -675,6 +789,8 @@ export default function ByAfrikaPage() {
     } catch (e) { }
     setUser(null);
     localStorage.removeItem('byafrika_user');
+    localStorage.removeItem('byafrika_admin_last_active');
+    localStorage.removeItem('byafrika_admin_left_at');
     if (activePage === 'admin' || activePage === 'compte') setActivePage('accueil');
     showToast('Vous avez été déconnecté.');
   };
@@ -733,6 +849,8 @@ export default function ByAfrikaPage() {
 
       setUser(adminUser);
       localStorage.setItem('byafrika_user', JSON.stringify(adminUser));
+      localStorage.setItem('byafrika_admin_last_active', Date.now().toString());
+      localStorage.removeItem('byafrika_admin_left_at');
       setAdminLoginModalOpen(false);
       setActivePage('admin');
       showToast(`Authentification réussie : Bienvenue ${adminUser.name} (${adminUser.role}) !`);
