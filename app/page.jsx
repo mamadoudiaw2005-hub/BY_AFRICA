@@ -87,24 +87,32 @@ export default function ByAfrikaPage() {
     roles: false
   });
 
-  // ── DÉTECTION SÉCURISÉE DES DROITS ADMINISTRATEUR (LISTE OFFICIELLE STRICTE) ──
-  const OFFICIAL_ADMIN_EMAILS = [
-    'admin@byafrica.com',
-    'adama@byafrica.com',
-    'adamadioume@byafrica.com',
-    'admin@byafrika.com',
-    'adama@byafrika.com',
-    'adamadioume@byafrika.com'
-  ];
+  // ── HACHAGE CRYPTOGRAPHIQUE SÉCURISÉ (AUCUN MOT DE PASSE EN CLAIR DANS LE CODE) ──
+  const hashPasswordSha256 = async (str) => {
+    if (!str) return '';
+    try {
+      const msgBuffer = new TextEncoder().encode(str);
+      const hashBuffer = await crypto.subtle.digest('SHA-256', msgBuffer);
+      const hashArray = Array.from(new Uint8Array(hashBuffer));
+      return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+    } catch (e) {
+      return '';
+    }
+  };
 
+  // Clé d'authentification hachée SHA-256 (sécurité maximale, impossible à déchiffrer)
+  const ADMIN_SECURITY_HASH = '3b612c75a7b5048a435fb6ec81e52ff92d6d795a8b5a9c17070f6a63c97a53b2';
+
+  // ── DÉTECTION SÉCURISÉE DES DROITS ADMINISTRATEUR (SANS IDENTIFIANTS EN CLAIR) ──
   const isFounderAdminEmail = (email) => {
     if (!email) return false;
     const clean = email.toLowerCase().trim();
-    return OFFICIAL_ADMIN_EMAILS.includes(clean) ||
-      clean.includes('adama') ||
-      clean.includes('admin@byafri') ||
-      clean.includes('byafrika.com') ||
-      clean.includes('byafrica.com');
+    const domain = clean.split('@')[1] || '';
+    const isStoreDomain = domain === 'byafrika.com' || domain === 'byafrica.com';
+    const isFounderPrefix = clean.startsWith('admin') || clean.includes('adama');
+    const userInDb = usersList.find(u => (u.email || '').toLowerCase().trim() === clean);
+    const isDbAdmin = userInDb && (userInDb.role === 'Fondateur' || userInDb.role === 'admin' || userInDb.role === 'Administrateur');
+    return (isStoreDomain && isFounderPrefix) || Boolean(isDbAdmin);
   };
 
   const isStaffRole = (role) => {
@@ -840,14 +848,6 @@ export default function ByAfrikaPage() {
     const userEmail = email.toLowerCase().trim();
     const isFounder = isFounderAdminEmail(userEmail);
 
-    // Mots de passe reconnus par défaut pour le fondateur Adama Dioume
-    const MASTER_PASSWORDS = [
-      'Admin123', 'admin123',
-      'byafrika2026', 'ByAfrika2026', 'ByAfrika2026!',
-      'Admin2026', 'admin2026',
-      'Adama2026', 'adama2026', 'admin', 'byafrika', 'passer'
-    ];
-
     try {
       // 1. Tenter la connexion officielle via Supabase Auth
       let authSuccessful = false;
@@ -878,7 +878,8 @@ export default function ByAfrikaPage() {
           provider: 'supabase'
         };
 
-        try { localStorage.setItem('byafrika_admin_passkey', pwd); } catch (e) { }
+        const pwdHash = await hashPasswordSha256(pwd);
+        try { localStorage.setItem('byafrika_admin_hash', pwdHash); } catch (e) { }
         setUser(adminUser);
         localStorage.setItem('byafrika_user', JSON.stringify(adminUser));
         localStorage.setItem('byafrika_admin_last_active', Date.now().toString());
@@ -889,22 +890,19 @@ export default function ByAfrikaPage() {
         return;
       }
 
-      // 3. Authentification Fondateur Résiliente (Adama Dioume / adama@ / admin@)
+      // 3. Authentification Fondateur Sécurisée (Validation par hachage SHA-256)
       if (isFounder) {
-        const savedPass = typeof window !== 'undefined' ? localStorage.getItem('byafrika_admin_passkey') : null;
-        const currentSavedPass = savedPass || 'Admin123';
-        const isMasterMatch = MASTER_PASSWORDS.includes(pwd);
-        const isSavedMatch = currentSavedPass && (currentSavedPass === pwd || currentSavedPass.toLowerCase() === pwd.toLowerCase());
+        const inputHash = await hashPasswordSha256(pwd);
+        const savedHash = typeof window !== 'undefined' ? localStorage.getItem('byafrika_admin_hash') : null;
+        const isHashMatch = (savedHash && inputHash === savedHash) || inputHash === ADMIN_SECURITY_HASH;
 
-        // Si aucun mot de passe n'a encore été mémorisé, on enregistre le mot de passe saisi
-        // Ou si le mot de passe correspond au mot de passe mémorisé / liste maîtresse / mot de passe valide
-        if (!savedPass || isMasterMatch || isSavedMatch || pwd.length >= 4) {
-          try { localStorage.setItem('byafrika_admin_passkey', pwd); } catch (e) { }
+        if (isHashMatch) {
+          try { localStorage.setItem('byafrika_admin_hash', inputHash); } catch (e) { }
 
           const adminUser = {
             id: 'usr_founder_adama',
             name: 'Adama Dioume (Fondateur)',
-            email: userEmail || 'admin@byafrika.com',
+            email: userEmail,
             role: 'Fondateur',
             provider: 'founder_passkey'
           };
@@ -932,7 +930,7 @@ export default function ByAfrikaPage() {
           showToast(`Accès Fondateur déverrouillé : Bienvenue Adama Dioume !`);
           return;
         } else {
-          showToast('Mot de passe administrateur incorrect. Vous pouvez le réinitialiser ci-dessous.', true);
+          showToast('Mot de passe administrateur incorrect.', true);
           return;
         }
       }
@@ -942,9 +940,10 @@ export default function ByAfrikaPage() {
       if (teamUser && isStaffRole(teamUser.role)) {
         let teamCredentials = {};
         try { teamCredentials = JSON.parse(localStorage.getItem('byafrika_team_passwords') || '{}'); } catch (e) { }
-        const expectedTeamPass = teamCredentials[userEmail] || teamUser.password;
+        const inputHash = await hashPasswordSha256(pwd);
+        const expectedTeamHash = teamCredentials[userEmail] || teamUser.password;
 
-        if (!expectedTeamPass || expectedTeamPass === pwd || MASTER_PASSWORDS.includes(pwd)) {
+        if (expectedTeamHash === inputHash || expectedTeamHash === pwd) {
           const adminUser = {
             id: teamUser.id || `staff_${Date.now()}`,
             name: teamUser.name || 'Gestionnaire BY_AFRIKA',
@@ -997,7 +996,8 @@ export default function ByAfrikaPage() {
     setAdminResetLoading(true);
     try {
       if (isFounderAdminEmail(email)) {
-        try { localStorage.setItem('byafrika_admin_passkey', newPass); } catch (e) { }
+        const newHash = await hashPasswordSha256(newPass);
+        try { localStorage.setItem('byafrika_admin_hash', newHash); } catch (e) { }
 
         const adminUser = {
           id: 'usr_founder_adama',
@@ -1029,8 +1029,9 @@ export default function ByAfrikaPage() {
       } else {
         const teamUser = usersList.find(item => (item.email || '').toLowerCase().trim() === email);
         if (teamUser) {
+          const newTeamHash = await hashPasswordSha256(newPass);
           const teamPasswords = JSON.parse(localStorage.getItem('byafrika_team_passwords') || '{}');
-          teamPasswords[email] = newPass;
+          teamPasswords[email] = newTeamHash;
           localStorage.setItem('byafrika_team_passwords', JSON.stringify(teamPasswords));
           setShowAdminResetModal(false);
           showToast('Mot de passe collaborateur mis à jour. Vous pouvez maintenant vous connecter.');
