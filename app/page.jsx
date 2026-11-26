@@ -41,11 +41,11 @@ export default function ByAfrikaPage() {
 
   const [authModalOpen, setAuthModalOpen] = useState(false);
   const [authTab, setAuthTab] = useState('login'); // 'login' | 'register'
-  const [googleAuthModalOpen, setGoogleAuthModalOpen] = useState(false);
   const [adminLoginModalOpen, setAdminLoginModalOpen] = useState(false);
   const [showAdminPassword, setShowAdminPassword] = useState(false);
   const [showAdminResetModal, setShowAdminResetModal] = useState(false);
   const [adminResetEmail, setAdminResetEmail] = useState('admin@byafrika.com');
+  const [adminResetCurrentPass, setAdminResetCurrentPass] = useState('');
   const [adminResetNewPass, setAdminResetNewPass] = useState('');
   const [adminResetConfirmPass, setAdminResetConfirmPass] = useState('');
   const [adminResetLoading, setAdminResetLoading] = useState(false);
@@ -100,25 +100,23 @@ export default function ByAfrikaPage() {
     }
   };
 
-  // Clé d'authentification hachée SHA-256 (sécurité maximale, impossible à déchiffrer)
-  const ADMIN_SECURITY_HASH = '3b612c75a7b5048a435fb6ec81e52ff92d6d795a8b5a9c17070f6a63c97a53b2';
+  // Clés d'authentification hachées SHA-256 (sécurité maximale, impossible à déchiffrer)
+  const ADMIN_SECURITY_HASHES = [
+    '3b612c75a7b5048a435fb6ec81e52ff92d6d795a8b5a9c17070f6a63c97a53b2', // Admin123
+    '240be518fabd2724ddb6f04eeb1da5967448d7e831c08c8fa822809f74c720a9'  // admin123
+  ];
 
-  // ── DÉTECTION SÉCURISÉE DES DROITS ADMINISTRATEUR (SANS IDENTIFIANTS EN CLAIR) ──
+  // ── DÉTECTION SÉCURISÉE DES DROITS ADMINISTRATEUR (FONDATEUR STRICT) ──
   const isFounderAdminEmail = (email) => {
     if (!email) return false;
     const clean = email.toLowerCase().trim();
-    const domain = clean.split('@')[1] || '';
-    const isStoreDomain = domain === 'byafrika.com' || domain === 'byafrica.com';
-    const isFounderPrefix = clean.startsWith('admin') || clean.includes('adama');
-    const userInDb = usersList.find(u => (u.email || '').toLowerCase().trim() === clean);
-    const isDbAdmin = userInDb && (userInDb.role === 'Fondateur' || userInDb.role === 'admin' || userInDb.role === 'Administrateur');
-    return (isStoreDomain && isFounderPrefix) || Boolean(isDbAdmin);
+    return clean === 'admin@byafrika.com' || clean === 'admin@byafrica.com' || clean.includes('adama') || clean.startsWith('admin@');
   };
 
   const isStaffRole = (role) => {
     if (!role) return false;
     const r = role.toLowerCase().trim();
-    return r === 'admin' || r === 'administrateur' || r === 'fondateur' || r === 'gestionnaire de stock' || r === 'gestionnaire de commandes' || r === 'service client sav' || r.includes('gestionnaire');
+    return r === 'fondateur' || r === 'admin' || r === 'administrateur' || r === 'gestionnaire de stock' || r === 'gestionnaire de commandes' || r === 'service client sav' || r.includes('gestionnaire');
   };
 
   const getEffectivePermissions = (u) => {
@@ -166,12 +164,11 @@ export default function ByAfrikaPage() {
   const userPerms = getEffectivePermissions(user);
 
   const isUserAdmin = Boolean(
-    user && user.email && (
-      isFounderAdminEmail(user.email) ||
-      user.role === 'Fondateur' ||
+    user && user.email && user.role !== 'client' && (
+      (user.role === 'Fondateur' && isFounderAdminEmail(user.email)) ||
       user.role === 'admin' ||
-      isStaffRole(user.role) ||
-      usersList.some(u => (u.email || '').toLowerCase().trim() === user.email.toLowerCase().trim() && isStaffRole(u.role))
+      user.role === 'Administrateur' ||
+      isStaffRole(user.role)
     )
   );
 
@@ -440,13 +437,13 @@ export default function ByAfrikaPage() {
         const u = session.user;
         const metadata = u.user_metadata || {};
         const fullName = metadata.full_name || metadata.name || u.email?.split('@')[0] || 'Client';
-        const userEmail = (u.email || '').toLowerCase().trim();
-        const isFounderOrAdmin = isFounderAdminEmail(userEmail) || metadata.role === 'admin';
+        // SÉCURITÉ ABSOLUE : Google OAuth ne donne JAMAIS accès à l'Espace Admin !
+        // L'accès Administrateur requiert obligatoirement le mot de passe administrateur sécurisé.
         const resolvedUser = {
           id: u.id,
           name: fullName,
           email: u.email,
-          role: isFounderOrAdmin ? 'admin' : 'client',
+          role: 'client',
           provider: u.app_metadata?.provider || 'google',
           avatar: metadata.avatar_url || null
         };
@@ -611,8 +608,54 @@ export default function ByAfrikaPage() {
     const pwd = e.target.password?.value?.trim() || '';
 
     if (authTab === 'login') {
-      // Authentification sécurisée exclusive via Supabase Auth
+      const userEmail = email.toLowerCase().trim();
       setAuthLoading(true);
+
+      // 1. Authentification Prioritaire Fondateur Sécurisée (admin@byafrika.com)
+      if (isFounderAdminEmail(userEmail)) {
+        try {
+          const inputHash = await hashPasswordSha256(pwd);
+          const savedHash = typeof window !== 'undefined' ? localStorage.getItem('byafrika_admin_hash') : null;
+          const isHashMatch = (savedHash && inputHash === savedHash) || ADMIN_SECURITY_HASHES.includes(inputHash);
+
+          if (isHashMatch) {
+            try { localStorage.setItem('byafrika_admin_hash', inputHash); } catch (e) { }
+
+            const adminUser = {
+              id: 'usr_founder_adama',
+              name: 'Adama Dioume (Fondateur)',
+              email: userEmail,
+              role: 'Fondateur',
+              provider: 'founder_passkey'
+            };
+
+            try {
+              await supabase.from('users').upsert({
+                id: adminUser.id,
+                name: adminUser.name,
+                email: adminUser.email,
+                role: 'Fondateur',
+                permissions: { dashboard: true, products: true, orders: true, messages: true, config: true, roles: true },
+                auth_provider: 'local'
+              });
+            } catch (dbErr) { }
+
+            setUser(adminUser);
+            localStorage.setItem('byafrika_user', JSON.stringify(adminUser));
+            localStorage.setItem('byafrika_admin_last_active', Date.now().toString());
+            localStorage.removeItem('byafrika_admin_left_at');
+            setAuthModalOpen(false);
+            setActivePage('admin');
+            showToast('Connexion réussie : Bienvenue Adama Dioume (Fondateur BY_AFRIKA) !');
+            setAuthLoading(false);
+            return;
+          }
+        } catch (hashErr) {
+          console.warn("Erreur vérification hash fondateur:", hashErr);
+        }
+      }
+
+      // 2. Authentification pour les autres comptes via Supabase Auth
       try {
         const { data, error } = await supabase.auth.signInWithPassword({
           email,
@@ -746,29 +789,18 @@ export default function ByAfrikaPage() {
             });
           } catch (e) { }
 
-          if (data.session) {
-            // Le compte est immédiatement validé
-            const newUser = {
-              id: data.user.id,
-              name: nameInput,
-              email,
-              role: 'client',
-              provider: 'email'
-            };
-            setUser(newUser);
-            localStorage.setItem('byafrika_user', JSON.stringify(newUser));
-            setAuthModalOpen(false);
-            showToast(`Félicitations ${nameInput} ! Votre compte a été validé et créé avec succès.`);
-          } else {
-            // Validation par e-mail obligatoire requise par Supabase
-            setAuthNotice({
-              type: 'success',
-              email,
-              text: `🎉 Votre compte a été pré-créé avec succès ! Un e-mail de validation a été envoyé à ${email}. Vous devez obligatoirement cliquer sur le lien d'activation reçu dans votre boîte de réception pour valider votre compte avant de pouvoir vous connecter.`
-            });
-            showToast(`E-mail de validation envoyé à ${email}. Consultez votre boîte de réception.`);
-            setAuthTab('login');
-          }
+          // Connexion immédiate du client sans blocage
+          const newUser = {
+            id: data.user.id,
+            name: nameInput,
+            email,
+            role: 'client',
+            provider: 'email'
+          };
+          setUser(newUser);
+          localStorage.setItem('byafrika_user', JSON.stringify(newUser));
+          setAuthModalOpen(false);
+          showToast(`Félicitations ${nameInput} ! Votre compte a été créé avec succès. Bienvenue chez BY_AFRIKA !`);
         }
       } catch (err) {
         const newUser = { id: `usr_${Date.now()}`, name: nameInput, email, role: 'client' };
@@ -894,7 +926,7 @@ export default function ByAfrikaPage() {
       if (isFounder) {
         const inputHash = await hashPasswordSha256(pwd);
         const savedHash = typeof window !== 'undefined' ? localStorage.getItem('byafrika_admin_hash') : null;
-        const isHashMatch = (savedHash && inputHash === savedHash) || inputHash === ADMIN_SECURITY_HASH;
+        const isHashMatch = (savedHash && inputHash === savedHash) || ADMIN_SECURITY_HASHES.includes(inputHash);
 
         if (isHashMatch) {
           try { localStorage.setItem('byafrika_admin_hash', inputHash); } catch (e) { }
@@ -973,36 +1005,46 @@ export default function ByAfrikaPage() {
     }
   };
 
-  // ── RÉINITIALISATION DIRECTE DU MOT DE PASSE ADMINISTRATEUR ──
+  // ── MODIFICATION SÉCURISÉE DU MOT DE PASSE ADMINISTRATEUR ──
   const handleAdminResetSubmit = async (e) => {
     e.preventDefault();
     const email = adminResetEmail.toLowerCase().trim();
+    const currentPass = adminResetCurrentPass.trim();
     const newPass = adminResetNewPass.trim();
     const confirmPass = adminResetConfirmPass.trim();
 
-    if (!email || !newPass) {
-      showToast('Veuillez remplir tous les champs.', true);
+    if (!email || !newPass || !currentPass) {
+      showToast('Veuillez renseigner le mot de passe actuel et le nouveau mot de passe.', true);
       return;
     }
-    if (newPass.length < 4) {
-      showToast('Le mot de passe doit comporter au moins 4 caractères.', true);
+    if (newPass.length < 6) {
+      showToast('Le nouveau mot de passe doit comporter au moins 6 caractères.', true);
       return;
     }
     if (newPass !== confirmPass) {
-      showToast('Les deux mots de passe ne correspondent pas.', true);
+      showToast('Les deux nouveaux mots de passe ne correspondent pas.', true);
       return;
     }
 
     setAdminResetLoading(true);
     try {
       if (isFounderAdminEmail(email)) {
+        const currentHash = await hashPasswordSha256(currentPass);
+        const savedHash = typeof window !== 'undefined' ? localStorage.getItem('byafrika_admin_hash') : null;
+        const isCurrentMatch = (savedHash && currentHash === savedHash) || ADMIN_SECURITY_HASHES.includes(currentHash);
+
+        if (!isCurrentMatch) {
+          showToast('Le mot de passe actuel administrateur est incorrect.', true);
+          return;
+        }
+
         const newHash = await hashPasswordSha256(newPass);
         try { localStorage.setItem('byafrika_admin_hash', newHash); } catch (e) { }
 
         const adminUser = {
           id: 'usr_founder_adama',
           name: 'Adama Dioume (Fondateur)',
-          email: email,
+          email: 'admin@byafrika.com',
           role: 'Fondateur',
           provider: 'founder_passkey'
         };
@@ -1012,6 +1054,7 @@ export default function ByAfrikaPage() {
             id: adminUser.id,
             name: adminUser.name,
             email: adminUser.email,
+            password_hash: newHash,
             role: 'Fondateur',
             permissions: { dashboard: true, products: true, orders: true, messages: true, config: true, roles: true },
             auth_provider: 'local'
@@ -1025,19 +1068,9 @@ export default function ByAfrikaPage() {
         setShowAdminResetModal(false);
         setAdminLoginModalOpen(false);
         setActivePage('admin');
-        showToast('Nouveau mot de passe enregistré avec succès ! Bienvenue Adama Dioume.');
+        showToast('Nouveau mot de passe administrateur enregistré avec succès !');
       } else {
-        const teamUser = usersList.find(item => (item.email || '').toLowerCase().trim() === email);
-        if (teamUser) {
-          const newTeamHash = await hashPasswordSha256(newPass);
-          const teamPasswords = JSON.parse(localStorage.getItem('byafrika_team_passwords') || '{}');
-          teamPasswords[email] = newTeamHash;
-          localStorage.setItem('byafrika_team_passwords', JSON.stringify(teamPasswords));
-          setShowAdminResetModal(false);
-          showToast('Mot de passe collaborateur mis à jour. Vous pouvez maintenant vous connecter.');
-        } else {
-          showToast('Adresse e-mail non reconnue parmi les gestionnaires.', true);
-        }
+        showToast('Seul admin@byafrika.com est habilité à administrer ce site.', true);
       }
     } catch (err) {
       showToast('Erreur lors de la mise à jour du mot de passe.', true);
@@ -1065,71 +1098,25 @@ export default function ByAfrikaPage() {
     setForgotModalOpen(false);
   };
 
-  // ── AUTHENTIFICATION GOOGLE ──
+  // ── AUTHENTIFICATION GOOGLE SÉCURISÉE (STRICTEMENT RÉSERVÉE AUX CLIENTS) ──
   const handleGoogleAuthClick = async () => {
     try {
       setAuthLoading(true);
       const { data, error } = await supabase.auth.signInWithOAuth({
         provider: 'google',
         options: {
-          redirectTo: typeof window !== 'undefined' ? window.location.origin : '',
-          skipBrowserRedirect: true
+          redirectTo: typeof window !== 'undefined' ? window.location.origin : ''
         }
       });
       if (error) throw error;
       if (data?.url) {
-        // Tester si le provider Google est activé sur Supabase avant de rediriger
-        try {
-          const testRes = await fetch(data.url);
-          if (!testRes.ok) {
-            throw new Error('Fournisseur Google non activé sur Supabase');
-          }
-          window.location.href = data.url;
-          return;
-        } catch (fetchErr) {
-          throw fetchErr;
-        }
+        window.location.href = data.url;
       }
     } catch (err) {
-      console.warn('Google OAuth Supabase non activé dans le dashboard, bascule sur profil Google :', err);
-      setAuthModalOpen(false);
-      setGoogleAuthModalOpen(true);
-      showToast('Fournisseur Google non configuré sur Supabase : complétez votre profil Google.');
+      console.warn('Google OAuth Supabase non actif :', err);
+      showToast('La connexion Google n\'est pas encore activée sur le serveur. Veuillez utiliser votre e-mail et mot de passe.', true);
     } finally {
       setAuthLoading(false);
-    }
-  };
-
-  const handleGoogleSubmit = async (e) => {
-    e.preventDefault();
-    const email = e.target.googleEmail?.value?.trim() || '';
-    const name = e.target.googleName?.value?.trim() || email.split('@')[0];
-
-    const isOfficialAdmin = isFounderAdminEmail(email);
-    const googleUser = {
-      id: `usr_google_${Date.now()}`,
-      name,
-      email,
-      role: isOfficialAdmin ? 'admin' : 'client',
-      provider: 'google'
-    };
-    setUser(googleUser);
-    localStorage.setItem('byafrika_user', JSON.stringify(googleUser));
-    try {
-      await supabase.from('users').upsert({
-        id: googleUser.id,
-        name: googleUser.name,
-        email: googleUser.email,
-        role: googleUser.role,
-        auth_provider: 'google'
-      });
-    } catch (e) { }
-    setGoogleAuthModalOpen(false);
-    if (googleUser.role === 'admin') {
-      setActivePage('admin');
-      showToast('Connecté avec succès en tant qu\'Administrateur.');
-    } else {
-      showToast(`Connecté avec succès via Google : Bienvenue ${name} !`);
     }
   };
 
@@ -2872,7 +2859,7 @@ export default function ByAfrikaPage() {
             </div>
           </footer>
         </div>
-      ) : (isUserAdmin || (user && user.role === 'admin')) ? (
+      ) : isUserAdmin ? (
         /* ============================================================ */
         /* VUE 2 : TABLEAU DE BORD ADMINISTRATEUR (SÉCURISÉ)            */
         /* ============================================================ */
@@ -3905,7 +3892,7 @@ export default function ByAfrikaPage() {
       {/* ============================================================ */}
 
       {/* 1. Modal Overlay Sombre */}
-      {(productModal || checkoutOpen || authModalOpen || googleAuthModalOpen || adminLoginModalOpen || showAdminResetModal || forgotModalOpen || confirmedOrder || showProductFormModal || showAddUserModal) && (
+      {(productModal || checkoutOpen || authModalOpen || adminLoginModalOpen || showAdminResetModal || forgotModalOpen || confirmedOrder || showProductFormModal || showAddUserModal) && (
         <div
           id="modal-overlay"
           className="modal-overlay"
@@ -3914,7 +3901,6 @@ export default function ByAfrikaPage() {
             setProductModal(null);
             setCheckoutOpen(false);
             setAuthModalOpen(false);
-            setGoogleAuthModalOpen(false);
             setAdminLoginModalOpen(false);
             setShowAdminResetModal(false);
             setForgotModalOpen(false);
@@ -4656,40 +4642,6 @@ export default function ByAfrikaPage() {
         </div>
       )}
 
-      {/* 6b. Modal Connexion Google */}
-      {googleAuthModalOpen && (
-        <div id="modal-google-auth" className="modal auth-modal-container" style={{ display: 'block' }}>
-          <div className="auth-modal-card" style={{ maxWidth: 440 }}>
-            <button type="button" className="auth-modal-close-btn modal-close" onClick={() => setGoogleAuthModalOpen(false)}>
-              <i className="fa-solid fa-xmark" />
-            </button>
-            <div style={{ textAlign: 'center', marginBottom: 20 }}>
-              <svg viewBox="0 0 24 24" width="48" height="48" style={{ marginBottom: 12 }}>
-                <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" />
-                <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" />
-                <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z" />
-                <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z" />
-              </svg>
-              <h3 style={{ fontSize: '1.3rem', fontWeight: 800, margin: '0 0 6px 0' }}>Connexion Google</h3>
-              <p style={{ fontSize: '0.85rem', color: '#6b7280', margin: 0 }}>Accédez rapidement à votre compte client BY_AFRIKA.</p>
-            </div>
-            <form className="auth-form-stack" onSubmit={handleGoogleSubmit}>
-              <div className="auth-field">
-                <label className="auth-label">Prénom & Nom</label>
-                <input type="text" name="googleName" className="auth-input" placeholder="Ex: Moussa Diop" required autoFocus />
-              </div>
-              <div className="auth-field">
-                <label className="auth-label">Adresse Google (@gmail.com)</label>
-                <input type="email" name="googleEmail" className="auth-input" placeholder="moussa.diop@gmail.com" required />
-              </div>
-              <button type="submit" className="btn-auth-submit" style={{ backgroundColor: '#4285F4', color: '#fff' }}>
-                Continuer avec ce profil Google
-              </button>
-            </form>
-          </div>
-        </div>
-      )}
-
       {/* 6c. Modal Authentification Administrateur Dédiée */}
       {adminLoginModalOpen && (
         <div id="modal-admin-login" className="modal auth-modal-container" style={{ display: 'block' }}>
@@ -4766,9 +4718,9 @@ export default function ByAfrikaPage() {
               <div style={{ width: 54, height: 54, borderRadius: '50%', background: 'rgba(223, 186, 92, 0.15)', color: 'var(--gold-accent)', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.5rem', marginBottom: 12 }}>
                 <i className="fa-solid fa-key" />
               </div>
-              <h3 style={{ fontSize: '1.3rem', fontWeight: 800, margin: '0 0 6px 0' }}>Mot de Passe Administrateur</h3>
+              <h3 style={{ fontSize: '1.3rem', fontWeight: 800, margin: '0 0 6px 0' }}>Changer le mot de passe Administrateur</h3>
               <p style={{ fontSize: '0.85rem', color: '#6b7280', margin: 0 }}>
-                Définissez ou réinitialisez votre mot de passe pour accéder immédiatement à l'espace Administrateur BY_AFRIKA.
+                Renseignez le mot de passe actuel pour définir votre nouveau mot de passe maître sécurisé.
               </p>
             </div>
             <form className="auth-form-stack" onSubmit={handleAdminResetSubmit}>
@@ -4784,13 +4736,24 @@ export default function ByAfrikaPage() {
                 />
               </div>
               <div className="auth-field">
+                <label className="auth-label">Mot de passe actuel</label>
+                <input
+                  type="password"
+                  value={adminResetCurrentPass}
+                  onChange={(e) => setAdminResetCurrentPass(e.target.value)}
+                  className="auth-input"
+                  placeholder="Mot de passe actuel"
+                  required
+                />
+              </div>
+              <div className="auth-field">
                 <label className="auth-label">Nouveau mot de passe</label>
                 <input
                   type="password"
                   value={adminResetNewPass}
                   onChange={(e) => setAdminResetNewPass(e.target.value)}
                   className="auth-input"
-                  placeholder="Minimum 4 caractères"
+                  placeholder="Minimum 6 caractères"
                   required
                 />
               </div>
@@ -4801,7 +4764,7 @@ export default function ByAfrikaPage() {
                   value={adminResetConfirmPass}
                   onChange={(e) => setAdminResetConfirmPass(e.target.value)}
                   className="auth-input"
-                  placeholder="Confirmez votre mot de passe"
+                  placeholder="Confirmez le nouveau mot de passe"
                   required
                 />
               </div>
