@@ -123,8 +123,8 @@ export default function ByAfrikaPage() {
     if (!u) return { dashboard: false, products: false, orders: false, messages: false, config: false, roles: false };
     const emailLower = (u.email || '').toLowerCase().trim();
 
-    // Fondateur et emails officiels = accès total illimité
-    if (isFounderAdminEmail(emailLower) || u.role === 'admin' || u.role === 'Fondateur' || (u.role === 'Administrateur' && !u.permissions)) {
+    // Seul le Fondateur (admin@byafrika.com) a accès à la configuration et à la gestion des administrateurs
+    if (isFounderAdminEmail(emailLower)) {
       return { dashboard: true, products: true, orders: true, messages: true, config: true, roles: true };
     }
 
@@ -139,14 +139,14 @@ export default function ByAfrikaPage() {
         products: Boolean(customPerms.products),
         orders: Boolean(customPerms.orders),
         messages: Boolean(customPerms.messages),
-        config: Boolean(customPerms.config),
-        roles: Boolean(customPerms.roles)
+        config: false, // Strictement réservé au Fondateur
+        roles: false   // Strictement réservé au Fondateur
       };
     }
 
-    // Permissions par défaut selon le rôle attribué
-    if (roleName.includes('admin') || roleName.includes('fondateur')) {
-      return { dashboard: true, products: true, orders: true, messages: true, config: true, roles: true };
+    // Permissions par défaut selon le rôle attribué (jamais config ni roles pour un non-fondateur)
+    if (roleName.includes('admin')) {
+      return { dashboard: true, products: true, orders: true, messages: true, config: false, roles: false };
     }
     if (roleName.includes('stock')) {
       return { dashboard: true, products: true, orders: false, messages: false, config: false, roles: false };
@@ -973,7 +973,7 @@ export default function ByAfrikaPage() {
         let teamCredentials = {};
         try { teamCredentials = JSON.parse(localStorage.getItem('byafrika_team_passwords') || '{}'); } catch (e) { }
         const inputHash = await hashPasswordSha256(pwd);
-        const expectedTeamHash = teamCredentials[userEmail] || teamUser.password;
+        const expectedTeamHash = teamUser.password_hash || teamCredentials[userEmail] || teamUser.password;
 
         if (expectedTeamHash === inputHash || expectedTeamHash === pwd) {
           const adminUser = {
@@ -1700,10 +1700,24 @@ export default function ByAfrikaPage() {
       }
 
       // 2. Enregistrement dans la table "users" de Supabase avec permissions limitées
+      const isFounderTarget = isFounderAdminEmail(email);
+      const sanitizedPermissions = isFounderTarget
+        ? { dashboard: true, products: true, orders: true, messages: true, config: true, roles: true }
+        : {
+            dashboard: Boolean(rolePermissions.dashboard),
+            products: Boolean(rolePermissions.products),
+            orders: Boolean(rolePermissions.orders),
+            messages: Boolean(rolePermissions.messages),
+            config: false,
+            roles: false
+          };
+
+      let hashedPwd = editingUser?.password_hash || undefined;
       if (password) {
+        hashedPwd = await hashPasswordSha256(password);
         try {
           const teamPasswords = JSON.parse(localStorage.getItem('byafrika_team_passwords') || '{}');
-          teamPasswords[email] = password;
+          teamPasswords[email] = hashedPwd;
           localStorage.setItem('byafrika_team_passwords', JSON.stringify(teamPasswords));
         } catch (e) {}
       }
@@ -1713,7 +1727,8 @@ export default function ByAfrikaPage() {
         name,
         email,
         role,
-        permissions: rolePermissions,
+        permissions: sanitizedPermissions,
+        ...(hashedPwd ? { password_hash: hashedPwd } : {}),
         auth_provider: 'local',
         updated_at: new Date().toISOString()
       };
@@ -1725,6 +1740,7 @@ export default function ByAfrikaPage() {
           email: updatedUser.email,
           role: updatedUser.role,
           permissions: updatedUser.permissions,
+          ...(hashedPwd ? { password_hash: hashedPwd } : {}),
           auth_provider: 'local'
         });
       } catch (dbErr) {
@@ -2899,12 +2915,6 @@ export default function ByAfrikaPage() {
                     <i className="fa-solid fa-gear" /> Configuration
                   </a>
                 )}
-                <a href="#" className="admin-nav-link" onClick={(e) => { e.preventDefault(); setActivePage('accueil'); }} style={{ color: 'var(--gold-accent)', marginTop: 24, border: '1px solid rgba(196,154,38,0.3)', borderRadius: 6 }}>
-                  <i className="fa-solid fa-arrow-left" /> Retour à la Boutique
-                </a>
-                <a href="#" className="admin-nav-link" onClick={(e) => { e.preventDefault(); handleLogout(); setActivePage('accueil'); }} style={{ color: '#ef4444', marginTop: 8 }}>
-                  <i className="fa-solid fa-right-from-bracket" /> Quitter la session Admin
-                </a>
               </nav>
             </aside>
 
@@ -5169,25 +5179,11 @@ export default function ByAfrikaPage() {
                     />
                     <span><i className="fa-solid fa-headset" style={{ marginRight: 4, color: '#8b5cf6' }} /> SAV & Invalidations</span>
                   </label>
-
-                  <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: '0.82rem', color: '#334155', cursor: 'pointer', background: '#fff', padding: '8px 10px', borderRadius: 6, border: '1px solid #e2e8f0' }}>
-                    <input
-                      type="checkbox"
-                      checked={rolePermissions.config}
-                      onChange={(e) => setRolePermissions({ ...rolePermissions, config: e.target.checked })}
-                    />
-                    <span><i className="fa-solid fa-gear" style={{ marginRight: 4, color: '#64748b' }} /> Configuration Site</span>
-                  </label>
-
-                  <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: '0.82rem', color: '#334155', cursor: 'pointer', background: '#fff', padding: '8px 10px', borderRadius: 6, border: '1px solid #e2e8f0' }}>
-                    <input
-                      type="checkbox"
-                      checked={rolePermissions.roles}
-                      onChange={(e) => setRolePermissions({ ...rolePermissions, roles: e.target.checked })}
-                    />
-                    <span><i className="fa-solid fa-users-gear" style={{ marginRight: 4, color: '#dc2626' }} /> Gestion des Rôles</span>
-                  </label>
                 </div>
+                <p style={{ margin: '8px 0 0 0', fontSize: '0.75rem', color: '#64748b' }}>
+                  <i className="fa-solid fa-shield-halved" style={{ marginRight: 4, color: '#c49a26' }} />
+                  La configuration du site et la gestion des administrateurs restent strictement réservées au Fondateur (admin@byafrika.com).
+                </p>
               </div>
 
               {/* Bloc Mot de passe et confirmation */}
