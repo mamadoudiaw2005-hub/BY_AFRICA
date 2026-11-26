@@ -56,8 +56,15 @@ CREATE TABLE IF NOT EXISTS users (
     created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
--- Assurer l'existence de la colonne permissions si la table existe déjà
-ALTER TABLE users ADD COLUMN IF NOT EXISTS permissions JSONB DEFAULT '{}'::jsonb;
+-- Assurer l'existence de toutes les colonnes nécessaires si la table a été créée précédemment
+ALTER TABLE public.users ADD COLUMN IF NOT EXISTS role TEXT DEFAULT 'client';
+ALTER TABLE public.users ADD COLUMN IF NOT EXISTS permissions JSONB DEFAULT '{}'::jsonb;
+ALTER TABLE public.users ADD COLUMN IF NOT EXISTS auth_provider TEXT DEFAULT 'local';
+ALTER TABLE public.users ADD COLUMN IF NOT EXISTS password_hash TEXT;
+ALTER TABLE public.users ADD COLUMN IF NOT EXISTS phone TEXT;
+ALTER TABLE public.users ADD COLUMN IF NOT EXISTS address TEXT;
+ALTER TABLE public.users ADD COLUMN IF NOT EXISTS notify_announcements BOOLEAN DEFAULT true;
+ALTER TABLE public.users ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ DEFAULT NOW();
 
 -- 4. Table des Messages & Réclamations clients (messages)
 CREATE TABLE IF NOT EXISTS messages (
@@ -221,12 +228,11 @@ CREATE INDEX IF NOT EXISTS idx_messages_created_at ON messages(created_at DESC);
 -- ==============================================================================
 -- INITIALISATION DU COMPTE FONDATEUR OFFICIEL DANS public.users
 -- ==============================================================================
+DELETE FROM public.users WHERE email IN ('admin@byafrica.com', 'adamadioume@byafrica.com', 'adama@byafrica.com', 'admin@byafrika.com');
+
 INSERT INTO public.users (id, name, email, role, permissions, auth_provider)
 VALUES 
     ('usr_founder_adama_1', 'Adama Dioume', 'admin@byafrica.com', 'Fondateur', '{"dashboard": true, "products": true, "orders": true, "messages": true, "config": true, "roles": true}'::jsonb, 'local'),
     ('usr_founder_adama_2', 'Adama Dioume', 'adamadioume@byafrica.com', 'Fondateur', '{"dashboard": true, "products": true, "orders": true, "messages": true, "config": true, "roles": true}'::jsonb, 'local'),
     ('usr_founder_adama_3', 'Adama Dioume', 'adama@byafrica.com', 'Fondateur', '{"dashboard": true, "products": true, "orders": true, "messages": true, "config": true, "roles": true}'::jsonb, 'local'),
-    ('usr_founder_adama_4', 'Adama Dioume', 'admin@byafrika.com', 'Fondateur', '{"dashboard": true, "products": true, "orders": true, "messages": true, "config": true, "roles": true}'::jsonb, 'local')
-ON CONFLICT (email) DO UPDATE 
-SET role = 'Fondateur',
-    permissions = '{"dashboard": true, "products": true, "orders": true, "messages": true, "config": true, "roles": true}'::jsonb;
+    ('usr_founder_adama_4', 'Adama Dioume', 'admin@byafrika.com', 'Fondateur', '{"dashboard": true, "products": true, "orders": true, "messages": true, "config": true, "roles": true}'::jsonb, 'local');
