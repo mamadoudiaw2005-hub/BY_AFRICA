@@ -4754,7 +4754,7 @@ export default function ByAfrikaPage() {
               </p>
               <p style={{ fontSize: '0.76rem', color: '#94a3b8', margin: '8px 0 0' }}>
                 <i className="fa-solid fa-circle-info" style={{ marginRight: 4 }} />
-                Consultez votre boîte de réception et vos spams.
+                Saisissez votre code ci-dessous ou cliquez directement sur le lien dans l'e-mail.
               </p>
             </div>
 
