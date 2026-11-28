@@ -5750,3 +5750,53 @@ section {
     width: 100%;
   }
 }
+
+
+/* ═══════════════════════════════════════════════════════
+   OTP / CODE DE VALIDATION EMAIL
+   Modal élégant avec input flexible (4 à 10 chiffres)
+   Compatible Brevo, Supabase, et tout fournisseur SMTP
+   ═══════════════════════════════════════════════════════ */
+
+.otp-modal-card {
+  animation: otpSlideIn 0.35s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes otpSlideIn {
+  from {
+    opacity: 0;
+    transform: translateY(20px) scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.otp-code-input {
+  caret-color: var(--gold-accent, #c49a26);
+}
+.otp-code-input:focus {
+  border-color: var(--gold-accent, #c49a26) !important;
+  box-shadow: 0 0 0 3px rgba(196, 154, 38, 0.15);
+}
+.otp-code-input::placeholder {
+  font-size: 1rem;
+  font-weight: 500;
+  letter-spacing: 0.05em;
+  color: #cbd5e1;
+  font-family: inherit;
+}
+
+/* Responsive OTP modal */
+@media (max-width: 480px) {
+  .otp-modal-card {
+    margin: 16px !important;
+    max-width: calc(100vw - 32px) !important;
+  }
+  .otp-code-input {
+    font-size: 1.3rem !important;
+    padding: 14px 16px !important;
+    letter-spacing: 0.25em !important;
+  }
+}

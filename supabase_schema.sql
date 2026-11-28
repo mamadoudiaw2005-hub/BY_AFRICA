@@ -169,10 +169,26 @@ DROP POLICY IF EXISTS "messages_public_insert" ON messages;
 DROP POLICY IF EXISTS "messages_admin_all" ON messages;
 DROP POLICY IF EXISTS "messages_management_all" ON messages;
 
-CREATE POLICY "messages_management_all" ON messages 
-    FOR ALL 
-    USING (true) 
+CREATE POLICY "messages_public_insert" ON messages 
+    FOR INSERT 
     WITH CHECK (true);
+
+CREATE POLICY "messages_admin_all" ON messages 
+    FOR ALL 
+    USING (
+        auth.role() = 'authenticated' AND (
+            (auth.jwt() ->> 'email') = 'admin@byafrika.com'
+            OR (auth.jwt() -> 'user_metadata' ->> 'role') IN ('admin', 'Fondateur')
+            OR (auth.jwt() -> 'app_metadata' ->> 'role') IN ('admin', 'Fondateur')
+        )
+    )
+    WITH CHECK (
+        auth.role() = 'authenticated' AND (
+            (auth.jwt() ->> 'email') = 'admin@byafrika.com'
+            OR (auth.jwt() -> 'user_metadata' ->> 'role') IN ('admin', 'Fondateur')
+            OR (auth.jwt() -> 'app_metadata' ->> 'role') IN ('admin', 'Fondateur')
+        )
+    );
 
 -- ------------------------------------------------------------------------------
 -- D. SÉCURITÉ DE LA CONFIGURATION (site_config)
@@ -211,10 +227,33 @@ DROP POLICY IF EXISTS "users_self_read_write" ON users;
 DROP POLICY IF EXISTS "users_admin_all" ON users;
 DROP POLICY IF EXISTS "users_management_all" ON users;
 
-CREATE POLICY "users_management_all" ON users 
+CREATE POLICY "users_self_read_write" ON users 
     FOR ALL 
-    USING (true) 
-    WITH CHECK (true);
+    USING (
+        auth.role() = 'authenticated' AND (
+            auth.uid()::text = id
+            OR (auth.jwt() ->> 'email') = email
+        )
+    )
+    WITH CHECK (
+        auth.role() = 'authenticated' AND (
+            auth.uid()::text = id
+            OR (auth.jwt() ->> 'email') = email
+        )
+    );
+
+CREATE POLICY "users_admin_all" ON users 
+    FOR ALL 
+    USING (
+        auth.role() = 'authenticated' AND (
+            (auth.jwt() ->> 'email') = 'admin@byafrika.com'
+        )
+    )
+    WITH CHECK (
+        auth.role() = 'authenticated' AND (
+            (auth.jwt() ->> 'email') = 'admin@byafrika.com'
+        )
+    );
 
 -- ==============================================================================
 -- INDEX D'OPTIMISATION DE PERFORMANCE

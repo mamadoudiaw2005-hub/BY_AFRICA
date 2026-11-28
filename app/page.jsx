@@ -44,7 +44,7 @@ export default function ByAfrikaPage() {
   const [adminLoginModalOpen, setAdminLoginModalOpen] = useState(false);
   const [showAdminPassword, setShowAdminPassword] = useState(false);
   const [showAdminResetModal, setShowAdminResetModal] = useState(false);
-  const [adminResetEmail, setAdminResetEmail] = useState('admin@byafrika.com');
+  const [adminResetEmail, setAdminResetEmail] = useState('');
   const [adminResetCurrentPass, setAdminResetCurrentPass] = useState('');
   const [adminResetNewPass, setAdminResetNewPass] = useState('');
   const [adminResetConfirmPass, setAdminResetConfirmPass] = useState('');
@@ -56,6 +56,15 @@ export default function ByAfrikaPage() {
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [authLoading, setAuthLoading] = useState(false);
   const [authNotice, setAuthNotice] = useState(null);
+
+  // ── OTP / CODE DE VALIDATION EMAIL (longueur flexible : 4 à 10 chiffres, compatible Brevo) ──
+  const [otpModalOpen, setOtpModalOpen] = useState(false);
+  const [otpEmail, setOtpEmail] = useState('');
+  const [otpUserName, setOtpUserName] = useState('');
+  const [otpCode, setOtpCode] = useState('');
+  const [otpLoading, setOtpLoading] = useState(false);
+  const [otpError, setOtpError] = useState('');
+  const [otpResendCooldown, setOtpResendCooldown] = useState(0);
 
   const [adminTab, setAdminTab] = useState('dashboard'); // dashboard, produits, commandes, messages, roles, config
   const [adminSubTab, setAdminSubTab] = useState('messages'); // messages | roles
@@ -100,10 +109,10 @@ export default function ByAfrikaPage() {
     }
   };
 
-  // Clés d'authentification hachées SHA-256 (sécurité maximale, impossible à déchiffrer)
+  // Clés d'authentification hachées SHA-256 (sécurité cryptographique maximale, irréversible)
   const ADMIN_SECURITY_HASHES = [
-    '3b612c75a7b5048a435fb6ec81e52ff92d6d795a8b5a9c17070f6a63c97a53b2', // Admin123
-    '240be518fabd2724ddb6f04eeb1da5967448d7e831c08c8fa822809f74c720a9'  // admin123
+    '3b612c75a7b5048a435fb6ec81e52ff92d6d795a8b5a9c17070f6a63c97a53b2',
+    '240be518fabd2724ddb6f04eeb1da5967448d7e831c08c8fa822809f74c720a9'
   ];
 
   // ── DÉTECTION SÉCURISÉE DES DROITS ADMINISTRATEUR (FONDATEUR STRICT) ──
@@ -448,6 +457,7 @@ export default function ByAfrikaPage() {
           avatar: metadata.avatar_url || null
         };
         setUser(resolvedUser);
+        setOtpModalOpen(false);
         setUsersList(prev => {
           const exists = prev.some(item => item.id === resolvedUser.id || item.email === resolvedUser.email);
           return exists ? prev.map(item => (item.id === resolvedUser.id || item.email === resolvedUser.email) ? { ...item, ...resolvedUser } : item) : [...prev, resolvedUser];
@@ -664,12 +674,15 @@ export default function ByAfrikaPage() {
 
         if (error) {
           if (error.message?.toLowerCase().includes('email not confirmed')) {
-            setAuthNotice({
-              type: 'warning',
-              email,
-              text: `Votre compte n'a pas encore été validé. Un e-mail de confirmation a été envoyé à ${email}. Veuillez cliquer sur le lien reçu pour l'activer avant de vous connecter.`
-            });
-            showToast('Validation requise : consultez vos e-mails.', true);
+            // Ouvrir le modal OTP pour permettre la validation par code
+            setOtpEmail(userEmail);
+            setOtpUserName('');
+            setOtpCode('');
+            setOtpError('');
+            setOtpResendCooldown(0);
+            setAuthModalOpen(false);
+            setOtpModalOpen(true);
+            showToast('Votre compte nécessite une validation par code. Entrez le code reçu ou demandez-en un nouveau.');
           } else if (error.message?.toLowerCase().includes('invalid login credentials')) {
             setAuthNotice({
               type: 'error',
@@ -789,25 +802,18 @@ export default function ByAfrikaPage() {
             });
           } catch (e) { }
 
-          // Connexion immédiate du client sans blocage
-          const newUser = {
-            id: data.user.id,
-            name: nameInput,
-            email,
-            role: 'client',
-            provider: 'email'
-          };
-          setUser(newUser);
-          localStorage.setItem('byafrika_user', JSON.stringify(newUser));
+          // Ouvrir le modal OTP pour validation par code de vérification email
+          setOtpEmail(email);
+          setOtpUserName(nameInput);
+          setOtpCode('');
+          setOtpError('');
+          setOtpResendCooldown(60);
           setAuthModalOpen(false);
-          showToast(`Félicitations ${nameInput} ! Votre compte a été créé avec succès. Bienvenue chez BY_AFRIKA !`);
+          setOtpModalOpen(true);
+          showToast(`Un code de validation a été envoyé à ${email}. Vérifiez votre boîte de réception !`);
         }
       } catch (err) {
-        const newUser = { id: `usr_${Date.now()}`, name: nameInput, email, role: 'client' };
-        setUser(newUser);
-        localStorage.setItem('byafrika_user', JSON.stringify(newUser));
-        setAuthModalOpen(false);
-        showToast(`Bienvenue, ${nameInput} ! Compte créé avec succès.`);
+        showToast('Erreur de connexion au serveur. Veuillez réessayer.', true);
       } finally {
         setAuthLoading(false);
       }
@@ -843,6 +849,77 @@ export default function ByAfrikaPage() {
       setAuthLoading(false);
     }
   };
+
+  // ── VÉRIFICATION OTP / CODE DE VALIDATION (longueur flexible : 4 à 10 chiffres) ──
+  const handleOtpVerify = async () => {
+    if (!otpCode || otpCode.trim().length < 4) {
+      setOtpError('Veuillez saisir le code de validation reçu par e-mail.');
+      return;
+    }
+    setOtpLoading(true);
+    setOtpError('');
+    try {
+      const { data, error } = await supabase.auth.verifyOtp({
+        email: otpEmail,
+        token: otpCode.trim(),
+        type: 'signup'
+      });
+      if (error) {
+        if (error.message?.toLowerCase().includes('expired') || error.message?.toLowerCase().includes('expir')) {
+          setOtpError('Ce code a expiré. Cliquez sur "Renvoyer le code" pour en recevoir un nouveau.');
+        } else if (error.message?.toLowerCase().includes('invalid') || error.message?.toLowerCase().includes('incorrect')) {
+          setOtpError('Code incorrect. Vérifiez le code reçu par e-mail et réessayez.');
+        } else {
+          setOtpError(error.message || 'Erreur de vérification. Veuillez réessayer.');
+        }
+      } else if (data?.user || data?.session) {
+        const verifiedUser = {
+          id: data.user?.id || `usr_${Date.now()}`,
+          name: otpUserName || data.user?.user_metadata?.full_name || otpEmail.split('@')[0],
+          email: otpEmail,
+          role: 'client',
+          provider: 'email'
+        };
+        setUser(verifiedUser);
+        localStorage.setItem('byafrika_user', JSON.stringify(verifiedUser));
+        setOtpModalOpen(false);
+        setOtpCode('');
+        setOtpError('');
+        showToast(`Félicitations ${verifiedUser.name} ! Votre compte est validé. Bienvenue chez BY_AFRIKA ! 🎉`);
+      }
+    } catch (err) {
+      setOtpError('Erreur de connexion au serveur. Veuillez réessayer.');
+    } finally {
+      setOtpLoading(false);
+    }
+  };
+
+  const handleResendOtp = async () => {
+    if (otpResendCooldown > 0) return;
+    setOtpLoading(true);
+    setOtpError('');
+    try {
+      const { error } = await supabase.auth.resend({
+        type: 'signup',
+        email: otpEmail
+      });
+      if (error) throw error;
+      setOtpResendCooldown(60);
+      setOtpCode('');
+      showToast(`Nouveau code de validation envoyé à ${otpEmail} !`);
+    } catch (err) {
+      setOtpError('Impossible de renvoyer le code. Veuillez réessayer dans quelques instants.');
+    } finally {
+      setOtpLoading(false);
+    }
+  };
+
+  // Timer de compte à rebours pour le renvoi du code OTP
+  useEffect(() => {
+    if (otpResendCooldown <= 0) return;
+    const timer = setTimeout(() => setOtpResendCooldown(prev => prev - 1), 1000);
+    return () => clearTimeout(timer);
+  }, [otpResendCooldown]);
 
   const handleLogout = async () => {
     try {
@@ -3839,7 +3916,6 @@ export default function ByAfrikaPage() {
                 <input
                   type="email"
                   name="adminEmail"
-                  defaultValue="admin@byafrika.com"
                   required
                   placeholder="admin@byafrika.com"
                   style={{ width: '100%', padding: '12px 14px', borderRadius: 8, border: '1px solid #d1d5db', fontSize: '0.95rem' }}
@@ -4652,6 +4728,123 @@ export default function ByAfrikaPage() {
         </div>
       )}
 
+      {/* 6b. Modal OTP / Code de Validation Email (compatible 4 à 10 chiffres / Brevo) */}
+      {otpModalOpen && (
+        <div id="modal-otp-verification" className="modal auth-modal-container" style={{ display: 'block' }}>
+          <div className="auth-modal-card otp-modal-card" style={{ maxWidth: 420 }}>
+            <button type="button" className="auth-modal-close-btn modal-close" onClick={() => { setOtpModalOpen(false); setOtpCode(''); setOtpError(''); }}>
+              <i className="fa-solid fa-xmark" />
+            </button>
+
+            <div style={{ textAlign: 'center', marginBottom: 24 }}>
+              <div style={{
+                width: 64, height: 64, borderRadius: '50%',
+                background: 'linear-gradient(135deg, rgba(223,186,92,0.15), rgba(196,154,38,0.2))',
+                color: '#c49a26', display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                fontSize: '1.7rem', marginBottom: 14
+              }}>
+                <i className="fa-solid fa-envelope" />
+              </div>
+              <h3 style={{ fontSize: '1.3rem', fontWeight: 800, margin: '0 0 8px 0', color: '#1e293b' }}>
+                Vérification de votre e-mail
+              </h3>
+              <p style={{ fontSize: '0.88rem', color: '#64748b', margin: 0, lineHeight: 1.5 }}>
+                Un code de validation a été envoyé à<br />
+                <strong style={{ color: '#1e293b', fontWeight: 700 }}>{otpEmail}</strong>
+              </p>
+              <p style={{ fontSize: '0.76rem', color: '#94a3b8', margin: '8px 0 0' }}>
+                <i className="fa-solid fa-circle-info" style={{ marginRight: 4 }} />
+                Consultez votre boîte de réception et vos spams.
+              </p>
+            </div>
+
+            <div style={{ margin: '0 0 16px' }}>
+              <input
+                type="text"
+                inputMode="numeric"
+                autoComplete="one-time-code"
+                className="otp-code-input"
+                placeholder="Entrez le code"
+                value={otpCode}
+                onChange={(e) => {
+                  const val = e.target.value.replace(/[^0-9]/g, '');
+                  setOtpCode(val);
+                  setOtpError('');
+                }}
+                maxLength={10}
+                autoFocus
+                style={{
+                  width: '100%', padding: '16px 20px', fontSize: '1.6rem', fontWeight: 800,
+                  textAlign: 'center', letterSpacing: '0.3em', borderRadius: 12,
+                  border: otpError ? '2px solid #ef4444' : '2px solid #e2e8f0',
+                  outline: 'none', transition: 'border-color 0.2s',
+                  background: '#f8fafc', color: '#1e293b', fontFamily: 'monospace'
+                }}
+                onFocus={(e) => { if (!otpError) e.target.style.borderColor = '#c49a26'; }}
+                onBlur={(e) => { if (!otpError) e.target.style.borderColor = '#e2e8f0'; }}
+              />
+            </div>
+
+            {otpError && (
+              <div style={{
+                background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.2)',
+                borderRadius: 8, padding: '10px 14px', marginBottom: 14,
+                fontSize: '0.82rem', color: '#dc2626', display: 'flex', alignItems: 'flex-start', gap: 8
+              }}>
+                <i className="fa-solid fa-circle-exclamation" style={{ marginTop: 2, flexShrink: 0 }} />
+                <span>{otpError}</span>
+              </div>
+            )}
+
+            <button
+              type="button"
+              className="btn-auth-submit"
+              onClick={handleOtpVerify}
+              disabled={otpLoading || otpCode.length < 4}
+              style={{
+                width: '100%', padding: '14px 20px', fontSize: '1rem', fontWeight: 700,
+                borderRadius: 10, cursor: otpLoading || otpCode.length < 4 ? 'not-allowed' : 'pointer',
+                opacity: otpLoading || otpCode.length < 4 ? 0.6 : 1,
+                display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
+                transition: 'all 0.2s'
+              }}
+            >
+              {otpLoading ? (
+                <><i className="fa-solid fa-spinner fa-spin" /> Vérification...</>
+              ) : (
+                <><i className="fa-solid fa-circle-check" /> Valider mon compte</>
+              )}
+            </button>
+
+            <div style={{
+              display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8,
+              marginTop: 18, paddingTop: 16, borderTop: '1px solid #f1f5f9'
+            }}>
+              <span style={{ fontSize: '0.82rem', color: '#64748b' }}>
+                Vous n'avez pas reçu le code ?
+              </span>
+              <button
+                type="button"
+                onClick={handleResendOtp}
+                disabled={otpResendCooldown > 0 || otpLoading}
+                style={{
+                  background: 'none', border: 'none', fontSize: '0.85rem', fontWeight: 700,
+                  color: otpResendCooldown > 0 ? '#94a3b8' : '#c49a26',
+                  cursor: otpResendCooldown > 0 ? 'default' : 'pointer',
+                  display: 'flex', alignItems: 'center', gap: 6, padding: '4px 0'
+                }}
+              >
+                {otpResendCooldown > 0 ? (
+                  <><i className="fa-solid fa-clock" /> Renvoyer dans {otpResendCooldown}s</>
+                ) : (
+                  <><i className="fa-solid fa-rotate-right" /> Renvoyer le code</>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* 6c. Modal Authentification Administrateur Dédiée */}
       {adminLoginModalOpen && (
         <div id="modal-admin-login" className="modal auth-modal-container" style={{ display: 'block' }}>
@@ -4669,7 +4862,7 @@ export default function ByAfrikaPage() {
             <form className="auth-form-stack" onSubmit={handleAdminLoginForm}>
               <div className="auth-field">
                 <label className="auth-label">Identifiant Administrateur</label>
-                <input type="email" name="adminEmail" defaultValue="admin@byafrika.com" className="auth-input" placeholder="admin@byafrika.com" required autoFocus />
+                <input type="email" name="adminEmail" className="auth-input" placeholder="admin@byafrika.com" required autoFocus />
               </div>
               <div className="auth-field">
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
