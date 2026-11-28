@@ -292,48 +292,55 @@ export default function ByAfrikaPage() {
   useEffect(() => {
     // Restaurer session utilisateur & panier & configuration
     try {
-      const savedUser = localStorage.getItem('byafrika_user');
-      if (savedUser) {
-        const parsed = JSON.parse(savedUser);
-        const parsedEmail = (parsed.email || '').toLowerCase().trim();
-        let currentUsersList = [];
-        try { currentUsersList = JSON.parse(localStorage.getItem('byafrika_users') || '[]'); } catch (e) {}
-        const teamUser = currentUsersList.find(u => (u.email || '').toLowerCase().trim() === parsedEmail);
-        const role = teamUser?.role || parsed.role;
-        const isStaff = isFounderAdminEmail(parsedEmail) || isStaffRole(role);
+      const pendingOtp = localStorage.getItem('byafrika_otp_pending');
+      if (pendingOtp) {
+        setOtpEmail(pendingOtp);
+        setOtpModalOpen(true);
+        setUser(null);
+      } else {
+        const savedUser = localStorage.getItem('byafrika_user');
+        if (savedUser) {
+          const parsed = JSON.parse(savedUser);
+          const parsedEmail = (parsed.email || '').toLowerCase().trim();
+          let currentUsersList = [];
+          try { currentUsersList = JSON.parse(localStorage.getItem('byafrika_users') || '[]'); } catch (e) {}
+          const teamUser = currentUsersList.find(u => (u.email || '').toLowerCase().trim() === parsedEmail);
+          const role = teamUser?.role || parsed.role;
+          const isStaff = isFounderAdminEmail(parsedEmail) || isStaffRole(role);
 
-        // VÉRIFICATION DE SÉCURITÉ : Déconnexion automatique admin après 30s d'absence de Google Chrome
-        if (isStaff) {
-          let leftAt = null;
-          let lastActive = null;
-          try {
-            leftAt = localStorage.getItem('byafrika_admin_left_at');
-            lastActive = localStorage.getItem('byafrika_admin_last_active');
-          } catch (e) {}
-          const refTime = leftAt ? Number(leftAt) : (lastActive ? Number(lastActive) : null);
-          const now = Date.now();
+          // VÉRIFICATION DE SÉCURITÉ : Déconnexion automatique admin après 30s d'absence de Google Chrome
+          if (isStaff) {
+            let leftAt = null;
+            let lastActive = null;
+            try {
+              leftAt = localStorage.getItem('byafrika_admin_left_at');
+              lastActive = localStorage.getItem('byafrika_admin_last_active');
+            } catch (e) {}
+            const refTime = leftAt ? Number(leftAt) : (lastActive ? Number(lastActive) : null);
+            const now = Date.now();
 
-          // Si le navigateur a été fermé ou quitté depuis plus de 30 secondes, ou sans horodatage récent
-          if (!refTime || (now - refTime > 30000)) {
-            localStorage.removeItem('byafrika_user');
-            localStorage.removeItem('byafrika_admin_left_at');
-            localStorage.removeItem('byafrika_admin_last_active');
-            supabase.auth.signOut().catch(() => {});
-            setUser(null);
-            // La session admin est purgée, ne pas restaurer
-            return;
-          } else {
-            localStorage.setItem('byafrika_admin_last_active', now.toString());
-            localStorage.removeItem('byafrika_admin_left_at');
+            // Si le navigateur a été fermé ou quitté depuis plus de 30 secondes, ou sans horodatage récent
+            if (!refTime || (now - refTime > 30000)) {
+              localStorage.removeItem('byafrika_user');
+              localStorage.removeItem('byafrika_admin_left_at');
+              localStorage.removeItem('byafrika_admin_last_active');
+              supabase.auth.signOut().catch(() => {});
+              setUser(null);
+              // La session admin est purgée, ne pas restaurer
+              return;
+            } else {
+              localStorage.setItem('byafrika_admin_last_active', now.toString());
+              localStorage.removeItem('byafrika_admin_left_at');
+            }
           }
-        }
 
-        if (isStaff) {
-          parsed.role = role || 'admin';
-        } else {
-          parsed.role = 'client';
+          if (isStaff) {
+            parsed.role = role || 'admin';
+          } else {
+            parsed.role = 'client';
+          }
+          setUser(parsed);
         }
-        setUser(parsed);
       }
 
       const savedCart = localStorage.getItem('byafrika_cart');
@@ -447,7 +454,15 @@ export default function ByAfrikaPage() {
         const metadata = u.user_metadata || {};
         const fullName = metadata.full_name || metadata.name || u.email?.split('@')[0] || 'Client';
 
-        // SÉCURITÉ OTP : Si inscription par e-mail sans confirmation préalable, bloquer la connexion auto
+        // SÉCURITÉ OTP STRICTE : Si une validation OTP est en attente, BLOQUER TOTALEMENT l'accès au compte
+        const pendingOtp = typeof window !== 'undefined' ? localStorage.getItem('byafrika_otp_pending') : null;
+        if (pendingOtp) {
+          setOtpEmail(pendingOtp);
+          setOtpModalOpen(true);
+          setUser(null);
+          return;
+        }
+
         const isGoogleOrOAuth = (u.app_metadata?.provider && u.app_metadata?.provider !== 'email') || u.identities?.some(i => i.provider !== 'email');
         const isEmailConfirmed = Boolean(u.email_confirmed_at || u.confirmed_at);
 
@@ -456,6 +471,7 @@ export default function ByAfrikaPage() {
           setOtpEmail(u.email || '');
           setOtpUserName(fullName);
           setOtpModalOpen(true);
+          setUser(null);
           return;
         }
 
@@ -633,6 +649,17 @@ export default function ByAfrikaPage() {
     if (authTab === 'login') {
       const userEmail = email.toLowerCase().trim();
       setAuthLoading(true);
+
+      // Si une validation OTP est en attente pour cet email, bloquer la connexion et afficher l'OTP
+      const pendingOtp = typeof window !== 'undefined' ? localStorage.getItem('byafrika_otp_pending') : null;
+      if (pendingOtp && pendingOtp.toLowerCase().trim() === userEmail) {
+        setOtpEmail(userEmail);
+        setOtpModalOpen(true);
+        setAuthModalOpen(false);
+        showToast('Validation obligatoire : veuillez saisir le code de validation envoyé à votre e-mail.', true);
+        setAuthLoading(false);
+        return;
+      }
 
       // 1. Authentification Prioritaire Fondateur Sécurisée (admin@byafrika.com)
       if (isFounderAdminEmail(userEmail)) {
@@ -815,7 +842,12 @@ export default function ByAfrikaPage() {
             });
           } catch (e) { }
 
-          // Ouvrir le modal OTP pour validation par code de vérification email
+          // VÉRIFICATION OBLIGATOIRE : Marquer l'OTP comme strictement obligatoire avant tout accès
+          try {
+            localStorage.setItem('byafrika_otp_pending', email);
+            localStorage.removeItem('byafrika_user');
+          } catch (e) {}
+          setUser(null);
           setOtpEmail(email);
           setOtpUserName(nameInput);
           setOtpCode('');
@@ -823,7 +855,7 @@ export default function ByAfrikaPage() {
           setOtpResendCooldown(60);
           setAuthModalOpen(false);
           setOtpModalOpen(true);
-          showToast(`Un code de validation a été envoyé à ${email}. Vérifiez votre boîte de réception !`);
+          showToast(`Compte créé ! Veuillez saisir le code de validation envoyé à ${email}.`);
         }
       } catch (err) {
         showToast('Erreur de connexion au serveur. Veuillez réessayer.', true);
@@ -872,34 +904,48 @@ export default function ByAfrikaPage() {
     setOtpLoading(true);
     setOtpError('');
     try {
-      const { data, error } = await supabase.auth.verifyOtp({
+      // 1. Tenter la vérification avec type: 'signup'
+      let verifyRes = await supabase.auth.verifyOtp({
         email: otpEmail,
         token: otpCode.trim(),
         type: 'signup'
       });
-      if (error) {
-        if (error.message?.toLowerCase().includes('expired') || error.message?.toLowerCase().includes('expir')) {
+
+      // 2. Si signup échoue, tenter type: 'email'
+      if (verifyRes.error) {
+        verifyRes = await supabase.auth.verifyOtp({
+          email: otpEmail,
+          token: otpCode.trim(),
+          type: 'email'
+        });
+      }
+
+      if (verifyRes.error) {
+        if (verifyRes.error.message?.toLowerCase().includes('expired') || verifyRes.error.message?.toLowerCase().includes('expir')) {
           setOtpError('Ce code a expiré. Cliquez sur "Renvoyer le code" pour en recevoir un nouveau.');
-        } else if (error.message?.toLowerCase().includes('invalid') || error.message?.toLowerCase().includes('incorrect')) {
+        } else if (verifyRes.error.message?.toLowerCase().includes('invalid') || verifyRes.error.message?.toLowerCase().includes('incorrect')) {
           setOtpError('Code incorrect. Vérifiez le code reçu par e-mail et réessayez.');
         } else {
-          setOtpError(error.message || 'Erreur de vérification. Veuillez réessayer.');
+          setOtpError(verifyRes.error.message || 'Erreur de vérification. Veuillez réessayer.');
         }
-      } else if (data?.user || data?.session) {
-        const verifiedUser = {
-          id: data.user?.id || `usr_${Date.now()}`,
-          name: otpUserName || data.user?.user_metadata?.full_name || otpEmail.split('@')[0],
-          email: otpEmail,
-          role: 'client',
-          provider: 'email'
-        };
-        setUser(verifiedUser);
-        localStorage.setItem('byafrika_user', JSON.stringify(verifiedUser));
-        setOtpModalOpen(false);
-        setOtpCode('');
-        setOtpError('');
-        showToast(`Félicitations ${verifiedUser.name} ! Votre compte est validé. Bienvenue chez BY_AFRIKA ! 🎉`);
+        return;
       }
+
+      // Code validé avec succès : Lever le verrouillage OTP !
+      try { localStorage.removeItem('byafrika_otp_pending'); } catch (e) {}
+      const verifiedUser = {
+        id: verifyRes.data?.user?.id || `usr_${Date.now()}`,
+        name: otpUserName || verifyRes.data?.user?.user_metadata?.full_name || otpEmail.split('@')[0],
+        email: otpEmail,
+        role: 'client',
+        provider: 'email'
+      };
+      setUser(verifiedUser);
+      localStorage.setItem('byafrika_user', JSON.stringify(verifiedUser));
+      setOtpModalOpen(false);
+      setOtpCode('');
+      setOtpError('');
+      showToast(`Félicitations ${verifiedUser.name} ! Votre compte est validé avec succès. Bienvenue chez BY_AFRIKA ! 🎉`);
     } catch (err) {
       setOtpError('Erreur de connexion au serveur. Veuillez réessayer.');
     } finally {
@@ -940,6 +986,7 @@ export default function ByAfrikaPage() {
     } catch (e) { }
     setUser(null);
     localStorage.removeItem('byafrika_user');
+    localStorage.removeItem('byafrika_otp_pending');
     localStorage.removeItem('byafrika_admin_last_active');
     localStorage.removeItem('byafrika_admin_left_at');
     if (activePage === 'admin' || activePage === 'compte') setActivePage('accueil');
