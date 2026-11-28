@@ -1890,6 +1890,7 @@ textarea.form-input {
 #modal-forgot-password,
 #modal-admin-product,
 #modal-admin-user,
+#modal-otp-verification,
 .modal-admin-dialog {
   position: fixed;
   top: 50%;

@@ -3991,7 +3991,7 @@ export default function ByAfrikaPage() {
       {/* ============================================================ */}
 
       {/* 1. Modal Overlay Sombre */}
-      {(productModal || checkoutOpen || authModalOpen || adminLoginModalOpen || showAdminResetModal || forgotModalOpen || confirmedOrder || showProductFormModal || showAddUserModal) && (
+      {(productModal || checkoutOpen || authModalOpen || otpModalOpen || adminLoginModalOpen || showAdminResetModal || forgotModalOpen || confirmedOrder || showProductFormModal || showAddUserModal) && (
         <div
           id="modal-overlay"
           className="modal-overlay"
@@ -4000,6 +4000,7 @@ export default function ByAfrikaPage() {
             setProductModal(null);
             setCheckoutOpen(false);
             setAuthModalOpen(false);
+            setOtpModalOpen(false);
             setAdminLoginModalOpen(false);
             setShowAdminResetModal(false);
             setForgotModalOpen(false);
@@ -4743,8 +4744,21 @@ export default function ByAfrikaPage() {
 
       {/* 6b. Modal OTP / Code de Validation Email (compatible 4 à 10 chiffres / Brevo) */}
       {otpModalOpen && (
-        <div id="modal-otp-verification" className="modal auth-modal-container" style={{ display: 'block' }}>
-          <div className="auth-modal-card otp-modal-card" style={{ maxWidth: 420 }}>
+        <div
+          id="modal-otp-verification"
+          className="modal auth-modal-container"
+          style={{
+            display: 'block',
+            position: 'fixed',
+            top: '50%',
+            left: '50%',
+            transform: 'translate(-50%, -50%)',
+            zIndex: 2500,
+            width: '92%',
+            maxWidth: 440
+          }}
+        >
+          <div className="auth-modal-card otp-modal-card" style={{ maxWidth: 440 }}>
             <button type="button" className="auth-modal-close-btn modal-close" onClick={() => { setOtpModalOpen(false); setOtpCode(''); setOtpError(''); }}>
               <i className="fa-solid fa-xmark" />
             </button>
