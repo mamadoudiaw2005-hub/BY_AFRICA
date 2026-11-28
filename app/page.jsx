@@ -446,6 +446,19 @@ export default function ByAfrikaPage() {
         const u = session.user;
         const metadata = u.user_metadata || {};
         const fullName = metadata.full_name || metadata.name || u.email?.split('@')[0] || 'Client';
+
+        // SÉCURITÉ OTP : Si inscription par e-mail sans confirmation préalable, bloquer la connexion auto
+        const isGoogleOrOAuth = (u.app_metadata?.provider && u.app_metadata?.provider !== 'email') || u.identities?.some(i => i.provider !== 'email');
+        const isEmailConfirmed = Boolean(u.email_confirmed_at || u.confirmed_at);
+
+        if (!isGoogleOrOAuth && !isEmailConfirmed) {
+          // L'e-mail n'est pas encore validé : maintenir le modal OTP ouvert et NE PAS connecter
+          setOtpEmail(u.email || '');
+          setOtpUserName(fullName);
+          setOtpModalOpen(true);
+          return;
+        }
+
         // SÉCURITÉ ABSOLUE : Google OAuth ne donne JAMAIS accès à l'Espace Admin !
         // L'accès Administrateur requiert obligatoirement le mot de passe administrateur sécurisé.
         const resolvedUser = {
